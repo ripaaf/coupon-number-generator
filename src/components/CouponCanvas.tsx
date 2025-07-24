@@ -10,6 +10,12 @@ interface CouponCanvasProps {
   couponTemplate: string;
 }
 
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 500;
+const GRID_SPACING = 30; // px
+const GRID_COLOR = "#ffff";
+const GRID_BG = "#D2D2D2";
+
 const CouponCanvas: React.FC<CouponCanvasProps> = ({
   textElements,
   onUpdateElement,
@@ -20,42 +26,48 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const handleCanvasClick = useCallback((event: React.MouseEvent) => {
-    // Only deselect if clicking directly on the canvas background
     if (event.target === canvasRef.current || event.target === event.currentTarget) {
       onSelectElement(null);
     }
   }, [onSelectElement]);
 
-  const defaultTemplate = `
-    <svg width="400" height="200" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="couponGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
-          <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
-        </linearGradient>
-        <pattern id="dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-          <circle cx="10" cy="10" r="1" fill="rgba(255,255,255,0.1)"/>
-        </pattern>
-      </defs>
-      
-      <!-- Main coupon body -->
-      <rect width="400" height="200" fill="url(#couponGradient)" rx="8"/>
-      <rect width="400" height="200" fill="url(#dots)" rx="8"/>
-      
-      <!-- Decorative border -->
-      <rect x="8" y="8" width="384" height="184" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" rx="4" stroke-dasharray="5,5"/>
-      
-      <!-- Side perforations -->
-      <line x1="0" y1="50" x2="400" y2="50" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
-      <line x1="0" y1="150" x2="400" y2="150" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
-      
-      <!-- Corner decorations -->
-      <circle cx="30" cy="30" r="3" fill="rgba(255,255,255,0.3)"/>
-      <circle cx="370" cy="30" r="3" fill="rgba(255,255,255,0.3)"/>
-      <circle cx="30" cy="170" r="3" fill="rgba(255,255,255,0.3)"/>
-      <circle cx="370" cy="170" r="3" fill="rgba(255,255,255,0.3)"/>
-    </svg>
-  `;
+  // Render grid dots as SVG
+  const renderGrid = () => {
+    const cols = Math.floor(CANVAS_WIDTH / GRID_SPACING);
+    const rows = Math.floor(CANVAS_HEIGHT / GRID_SPACING);
+    const dots: JSX.Element[] = [];
+
+    for (let x = 0; x <= cols; x++) {
+      for (let y = 0; y <= rows; y++) {
+        dots.push(
+          <circle
+            key={`dot-${x}-${y}`}
+            cx={x * GRID_SPACING}
+            cy={y * GRID_SPACING}
+            r={1.5}
+            fill={GRID_COLOR}
+          />
+        );
+      }
+    }
+
+    return (
+      <svg
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: 'none',
+          display: 'block'
+        }}
+      >
+        <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill={GRID_BG} />
+        {dots}
+      </svg>
+    );
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-8">
@@ -63,19 +75,25 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
       
       <div 
         ref={canvasRef}
-        className="relative border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 overflow-hidden"
+        className="relative border-2 border-dashed border-gray-300 rounded-lg overflow-hidden"
         onClick={handleCanvasClick}
-        style={{ minHeight: '500px', width: '800px', height: '500px' }}
+        style={{ minHeight: `${CANVAS_HEIGHT}px`, width: `${CANVAS_WIDTH}px`, height: `${CANVAS_HEIGHT}px` }}
       >
-        {/* SVG Template */}
-        <div 
-          className="absolute inset-0 pointer-events-none select-none"
-          dangerouslySetInnerHTML={{ 
-            __html: couponTemplate || defaultTemplate 
-          }}
-        />
-        
-        {/* Text Elements */}
+        {/* Grid */}
+        {renderGrid()}
+
+        {/* SVG Background (if any) */}
+        {couponTemplate && (
+          <div
+            className="absolute inset-0 pointer-events-none select-none"
+            style={{ zIndex: 1 }}
+            dangerouslySetInnerHTML={{
+              __html: couponTemplate,
+            }}
+          />
+        )}
+
+        {/* Text Elements (always shown) */}
         {textElements.map((element) => (
           <DraggableText
             key={element.id}
@@ -86,10 +104,10 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
             canvasRef={canvasRef}
           />
         ))}
-        
+
         {/* Helper text when canvas is empty */}
         {textElements.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2 }}>
             <div className="text-center text-gray-500">
               <p className="text-lg font-medium mb-2">Start designing your coupon</p>
               <p className="text-sm">Add text elements or upload an SVG template</p>
@@ -99,7 +117,7 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
       </div>
       
       <div className="mt-4 text-sm text-gray-600">
-        <p><strong>Tips:</strong> Click elements to select • Drag to move • Use the sidebar to customize</p>
+        <p><strong>Tips:</strong> Click elements to select • Drag to move • Use the sidebar to customize • Use arrow keys to move selected element</p>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Upload, Plus, Download, RotateCcw, Type, Hash, Settings, Copy, Trash2 } from 'lucide-react';
+import { Upload, Download, RotateCcw, Type, Hash, Settings, Copy, Trash2 } from 'lucide-react';
 import CouponCanvas from './components/CouponCanvas';
 import ControlPanel from './components/ControlPanel';
 import NumberGenerator from './components/NumberGenerator';
@@ -16,8 +16,8 @@ export interface TextElement {
   height: number;
   isSelected: boolean;
   isNumberVariable: boolean;
-  backgroundColor?: string; // e.g., "#FFFFFF" or "transparent"
-  fontColor?: string; // e.g., "#000000"
+  backgroundColor?: string;
+  fontColor?: string;
 }
 
 export interface CustomFont {
@@ -134,11 +134,32 @@ function App() {
     }
   }, [copiedElement]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts & Arrow key movement
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Arrow keys for moving selected element
+      if (
+        selectedElement &&
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)
+      ) {
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 1;
+        setTextElements(prev =>
+          prev.map(el => {
+            if (el.id !== selectedElement) return el;
+            let { x, y } = el;
+            if (event.key === 'ArrowUp') y -= step;
+            else if (event.key === 'ArrowDown') y += step;
+            else if (event.key === 'ArrowLeft') x -= step;
+            else if (event.key === 'ArrowRight') x += step;
+            return { ...el, x, y };
+          })
+        );
         return;
       }
 
@@ -170,7 +191,15 @@ function App() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedElement, deleteElement, addTextElement, addNumberVariable, copyElement, pasteElement, duplicateElement]);
+  }, [
+    selectedElement,
+    deleteElement,
+    addTextElement,
+    addNumberVariable,
+    copyElement,
+    pasteElement,
+    duplicateElement,
+  ]);
 
   const handleSVGUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -185,7 +214,6 @@ function App() {
   }, []);
 
   // --- FULL FIX: EMBED FONTS IN SVG EXPORT ---
-  // Helper: fetch font as base64
   const fetchFontBase64 = async (url: string): Promise<string | null> => {
     try {
       const resp = await fetch(url);
@@ -195,6 +223,29 @@ function App() {
       return null;
     }
   };
+
+  const defaultTemplate = `
+    <svg width="400" height="200" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="couponGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
+        </linearGradient>
+        <pattern id="dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="10" cy="10" r="1" fill="rgba(255,255,255,0.1)"/>
+        </pattern>
+      </defs>
+      <rect width="400" height="200" fill="url(#couponGradient)" rx="8"/>
+      <rect width="400" height="200" fill="url(#dots)" rx="8"/>
+      <rect x="8" y="8" width="384" height="184" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" rx="4" stroke-dasharray="5,5"/>
+      <line x1="0" y1="50" x2="400" y2="50" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="0" y1="150" x2="400" y2="150" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+      <circle cx="30" cy="30" r="3" fill="rgba(255,255,255,0.3)"/>
+      <circle cx="370" cy="30" r="3" fill="rgba(255,255,255,0.3)"/>
+      <circle cx="30" cy="170" r="3" fill="rgba(255,255,255,0.3)"/>
+      <circle cx="370" cy="170" r="3" fill="rgba(255,255,255,0.3)"/>
+    </svg>
+  `;
 
   // Async SVG generator with embedded fonts
   const generateSVGContent = useCallback(
@@ -276,16 +327,18 @@ function App() {
           text: el.isNumberVariable ? formattedNumber : el.text,
         }));
 
+        const svgContent = await generateSVGContent(couponElements);
+
         const couponData = {
           id: `coupon-${i}`,
           number: formattedNumber,
           elements: couponElements,
+          svgContent : svgContent,
         };
 
         coupons.push(couponData);
 
         // Generate SVG for this coupon (await for fonts!)
-        const svgContent = await generateSVGContent(couponElements);
         zip.file(`coupon_${formattedNumber}.svg`, svgContent);
       }
 
@@ -297,38 +350,6 @@ function App() {
     },
     [textElements, couponTemplate, generateSVGContent]
   );
-
-  // Default SVG template
-  const defaultTemplate = `
-    <svg width="400" height="200" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="couponGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
-          <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
-        </linearGradient>
-        <pattern id="dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-          <circle cx="10" cy="10" r="1" fill="rgba(255,255,255,0.1)"/>
-        </pattern>
-      </defs>
-      
-      <!-- Main coupon body -->
-      <rect width="400" height="200" fill="url(#couponGradient)" rx="8"/>
-      <rect width="400" height="200" fill="url(#dots)" rx="8"/>
-      
-      <!-- Decorative border -->
-      <rect x="8" y="8" width="384" height="184" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" rx="4" stroke-dasharray="5,5"/>
-      
-      <!-- Side perforations -->
-      <line x1="0" y1="50" x2="400" y2="50" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
-      <line x1="0" y1="150" x2="400" y2="150" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
-      
-      <!-- Corner decorations -->
-      <circle cx="30" cy="30" r="3" fill="rgba(255,255,255,0.3)"/>
-      <circle cx="370" cy="30" r="3" fill="rgba(255,255,255,0.3)"/>
-      <circle cx="30" cy="170" r="3" fill="rgba(255,255,255,0.3)"/>
-      <circle cx="370" cy="170" r="3" fill="rgba(255,255,255,0.3)"/>
-    </svg>
-  `;
 
   const exportCoupons = useCallback((coupons: any[]) => {
     // The export is now handled in generateCoupons function
@@ -477,6 +498,7 @@ function App() {
           <p><kbd className="bg-gray-100 px-1 rounded">Ctrl+C</kbd> Copy</p>
           <p><kbd className="bg-gray-100 px-1 rounded">Ctrl+V</kbd> Paste</p>
           <p><kbd className="bg-gray-100 px-1 rounded">Del</kbd> Delete</p>
+          <p><kbd className="bg-gray-100 px-1 rounded">Arrow Keys</kbd> Move Selected (Shift for 10px)</p>
         </div>
       </div>
 

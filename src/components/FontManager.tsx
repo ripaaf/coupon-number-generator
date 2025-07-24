@@ -1,13 +1,71 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Upload, Trash2, Type } from 'lucide-react';
 import { CustomFont } from '../App';
 
+interface CustomFontPersistent extends CustomFont {
+  base64?: string; // Add base64 field
+}
+
 interface FontManagerProps {
-  fonts: CustomFont[];
+  fonts: CustomFontPersistent[];
   onClose: () => void;
-  onAddFont: (font: CustomFont) => void;
+  onAddFont: (font: CustomFontPersistent) => void;
   onRemoveFont: (fontName: string) => void;
 }
+
+const LOCAL_STORAGE_KEY = "customFonts_v2";
+
+function getFontFormat(filename: string): string {
+  const ext = filename.toLowerCase().split('.').pop();
+  switch (ext) {
+    case 'woff2': return 'woff2';
+    case 'woff': return 'woff';
+    case 'ttf': return 'truetype';
+    case 'otf': return 'opentype';
+    default: return 'truetype';
+  }
+}
+
+// Convert file to base64 data url
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+const saveFontsToStorage = (fonts: CustomFontPersistent[]) => {
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(fonts));
+};
+
+const loadFontsFromStorage = (): CustomFontPersistent[] => {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (raw) {
+      return JSON.parse(raw) as CustomFontPersistent[];
+    }
+  } catch {}
+  return [];
+};
+
+const injectFontFaces = (fonts: CustomFontPersistent[]) => {
+  fonts.forEach((font) => {
+    if (document.head.querySelector(`style[data-font-family="${font.family}"]`)) return;
+    if (!font.base64) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-font-family", font.family);
+    style.textContent = `
+      @font-face {
+        font-family: '${font.family}';
+        src: url('${font.base64}') format('${getFontFormat(font.base64)}');
+        font-display: swap;
+      }
+    `;
+    document.head.appendChild(style);
+  });
+};
 
 const FontManager: React.FC<FontManagerProps> = ({
   fonts,
@@ -18,6 +76,28 @@ const FontManager: React.FC<FontManagerProps> = ({
   const [fontName, setFontName] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [localFonts, setLocalFonts] = useState<CustomFontPersistent[]>([]);
+
+  // Load fonts from localStorage on open
+  useEffect(() => {
+    const stored = loadFontsFromStorage();
+    if (stored.length > 0) {
+      injectFontFaces(stored);
+      setLocalFonts(stored);
+      stored.forEach((font) => {
+        if (!fonts.some(f => f.family === font.family)) {
+          onAddFont(font);
+        }
+      });
+    }
+    // eslint-disable-next-line
+  }, []);
+
+  // Update localStorage when fonts change
+  useEffect(() => {
+    saveFontsToStorage(fonts as CustomFontPersistent[]);
+    setLocalFonts(fonts as CustomFontPersistent[]);
+  }, [fonts]);
 
   const handleFontUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -41,36 +121,29 @@ const FontManager: React.FC<FontManagerProps> = ({
     setIsUploading(true);
 
     try {
-      // Create a URL for the font file
-      const fontUrl = URL.createObjectURL(file);
-      
-      // Generate a unique font family name
+      const base64 = await fileToBase64(file); // <-- base64 data url
       const fontFamily = `custom-${fontName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
-      
-      // Create a style element to load the font
       const style = document.createElement('style');
+      style.setAttribute("data-font-family", fontFamily);
       style.textContent = `
         @font-face {
           font-family: '${fontFamily}';
-          src: url('${fontUrl}') format('${getFontFormat(file.name)}');
+          src: url('${base64}') format('${getFontFormat(file.name)}');
           font-display: swap;
         }
       `;
       document.head.appendChild(style);
 
-      // Wait a bit for the font to load
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const newFont: CustomFont = {
+      const newFont: CustomFontPersistent = {
         name: fontName.trim(),
-        url: fontUrl,
+        url: base64,
         family: fontFamily,
+        base64,
       };
 
       onAddFont(newFont);
       setFontName('');
-      
-      // Reset the file input
+
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -82,28 +155,15 @@ const FontManager: React.FC<FontManagerProps> = ({
     }
   };
 
-  const getFontFormat = (filename: string): string => {
-    const ext = filename.toLowerCase().split('.').pop();
-    switch (ext) {
-      case 'woff2': return 'woff2';
-      case 'woff': return 'woff';
-      case 'ttf': return 'truetype';
-      case 'otf': return 'opentype';
-      default: return 'truetype';
-    }
-  };
-
-  const handleRemoveFont = (font: CustomFont) => {
+  const handleRemoveFont = (font: CustomFontPersistent) => {
     if (confirm(`Are you sure you want to remove the font "${font.name}"?`)) {
-      // Clean up the object URL
-      URL.revokeObjectURL(font.url);
       onRemoveFont(font.name);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
             <Type className="w-5 h-5" />
@@ -116,12 +176,9 @@ const FontManager: React.FC<FontManagerProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
-
-        <div className="p-6 space-y-6 overflow-y-auto">
-          {/* Upload Section */}
+        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
           <div className="space-y-4">
             <h3 className="text-lg font-medium text-gray-800">Upload Custom Font</h3>
-            
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -135,7 +192,6 @@ const FontManager: React.FC<FontManagerProps> = ({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-
               <div>
                 <input
                   ref={fileInputRef}
@@ -153,20 +209,17 @@ const FontManager: React.FC<FontManagerProps> = ({
                   {isUploading ? 'Uploading...' : 'Choose Font File'}
                 </button>
               </div>
-
               <p className="text-xs text-gray-500">
-                Supported formats: TTF, OTF, WOFF, WOFF2
+                Supported formats: TTF, OTF, WOFF, WOFF2. <br />
+                <span className="font-bold text-blue-900">Fonts now persist after refresh and always work in export!</span>
               </p>
             </div>
           </div>
-
-          {/* Fonts List */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium text-gray-800">
-              Custom Fonts ({fonts.length})
+              Custom Fonts ({localFonts.length})
             </h3>
-
-            {fonts.length === 0 ? (
+            {localFonts.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Type className="w-12 h-12 mx-auto mb-3 opacity-50" />
                 <p>No custom fonts uploaded yet</p>
@@ -174,7 +227,7 @@ const FontManager: React.FC<FontManagerProps> = ({
               </div>
             ) : (
               <div className="space-y-3">
-                {fonts.map((font) => (
+                {localFonts.map((font) => (
                   <div
                     key={font.name}
                     className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
@@ -205,15 +258,13 @@ const FontManager: React.FC<FontManagerProps> = ({
               </div>
             )}
           </div>
-
-          {/* Font Usage Guide */}
           <div className="bg-blue-50 p-4 rounded-lg">
             <h4 className="text-sm font-medium text-blue-800 mb-2">Usage Guide:</h4>
             <ul className="text-sm text-blue-700 space-y-1">
               <li>• Upload font files in TTF, OTF, WOFF, or WOFF2 format</li>
               <li>• Give your fonts descriptive names for easy identification</li>
               <li>• Custom fonts will appear in the font dropdown when editing text elements</li>
-              <li>• Fonts are stored in your browser session and won't persist after refresh</li>
+              <li>• <span className="font-bold text-blue-900">Fonts are persistent and will always export as expected!</span></li>
             </ul>
           </div>
         </div>

@@ -52,7 +52,7 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
             <Hash className="w-5 h-5" />
@@ -66,7 +66,7 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-6 overflow-y-auto">
+        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
           {/* Configuration */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium text-gray-800">Configuration</h3>
@@ -202,6 +202,14 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
                     All number variables have been replaced with the generated sequence.
                   </div>
                 </div>
+                {/* SVG Preview */}
+                {generatedCoupons[previewIndex]?.svgContent && (
+                  <div
+                    className="mt-4 flex justify-center items-center bg-gray-100 p-4 rounded"
+                    style={{ minHeight: 200, minWidth: 400, maxHeight: 300, overflow: 'auto' }}
+                    dangerouslySetInnerHTML={{ __html: generatedCoupons[previewIndex].svgContent }}
+                  />
+                )}
               </div>
 
               <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
