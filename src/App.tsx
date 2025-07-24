@@ -137,12 +137,9 @@ function App() {
   // Keyboard shortcuts & Arrow key movement
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in inputs
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
         return;
       }
-
-      // Arrow keys for moving selected element
       if (
         selectedElement &&
         ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)
@@ -162,7 +159,6 @@ function App() {
         );
         return;
       }
-
       if (event.key === 'Delete' || event.key === 'Backspace') {
         if (selectedElement) {
           deleteElement(selectedElement);
@@ -201,15 +197,27 @@ function App() {
     duplicateElement,
   ]);
 
-  const handleSVGUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  // Updated upload handler: accepts SVG, PNG, JPG/JPEG as background/template
+  const handleBackgroundUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && file.type === 'image/svg+xml') {
+    if (!file) return;
+
+    if (file.type === 'image/svg+xml') {
+      // SVG: read as text
       const reader = new FileReader();
       reader.onload = (e) => {
-        const svgContent = e.target?.result as string;
-        setCouponTemplate(svgContent);
+        setCouponTemplate(e.target?.result as string);
       };
       reader.readAsText(file);
+    } else if (file.type.startsWith('image/png') || file.type.startsWith('image/jpeg')) {
+      // PNG/JPG: read as data URL and use img as template
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setCouponTemplate(`<img src="${e.target?.result}" style="width:100%;height:100%;object-fit:cover;display:block;" />`);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      alert('Unsupported file type. Please upload SVG, PNG, or JPG.');
     }
   }, []);
 
@@ -252,17 +260,14 @@ function App() {
     async (elements: TextElement[]) => {
       let svgBase = couponTemplate || defaultTemplate;
 
-      // Find all custom font families used in these elements
       const usedFonts = customFonts.filter(font =>
         elements.some(el => el.fontFamily === font.family)
       );
 
-      // Build font-face CSS for SVG <style>
       const fontFaceCSS = await Promise.all(
         usedFonts.map(async (font) => {
           const base64 = await fetchFontBase64(font.url);
           if (!base64) return '';
-          // Guess format from URL
           const ext = font.url.split('.').pop()?.toLowerCase();
           let format = 'truetype';
           if (ext === 'woff') format = 'woff';
@@ -283,7 +288,6 @@ function App() {
         ? `<style><![CDATA[\n${fontFaceCSS.join('\n')}\n]]></style>`
         : '';
 
-      // Compose text nodes
       const textNodes = elements.map(el => `
         <g>
           ${el.backgroundColor && el.backgroundColor !== "transparent"
@@ -306,53 +310,90 @@ function App() {
     [couponTemplate, customFonts]
   );
 
-  // --- FIX: generateCoupons is now async and uses await generateSVGContent ---
-  const generateCoupons = useCallback(
-    async (startNumber: number, count: number, prefix: string = '', numberLength: number = 4) => {
-      const numberElements = textElements.filter(el => el.isNumberVariable);
-      if (numberElements.length === 0) return [];
+  // Updated: support export as SVG, PNG, or JPG
+const generateCoupons = useCallback(
+  async (
+    startNumber: number,
+    count: number,
+    prefix: string = '',
+    numberLength: number = 4,
+    format: 'svg' | 'png' | 'jpg' = 'svg',
+    resolution?: { width: number, height: number } // <-- Accept resolution!
+  ) => {
+    const numberElements = textElements.filter(el => el.isNumberVariable);
+    if (numberElements.length === 0) return [];
 
-      const JSZip = (await import('jszip')).default;
-      const { saveAs } = await import('file-saver');
+    const JSZip = (await import('jszip')).default;
+    const { saveAs } = await import('file-saver');
 
-      const zip = new JSZip();
-      const coupons = [];
+    const zip = new JSZip();
+    const coupons = [];
 
-      for (let i = 0; i < count; i++) {
-        const currentNumber = startNumber + i;
-        const formattedNumber = prefix + currentNumber.toString().padStart(numberLength, '0');
+    for (let i = 0; i < count; i++) {
+      const currentNumber = startNumber + i;
+      const formattedNumber = prefix + currentNumber.toString().padStart(numberLength, '0');
+      const couponElements = textElements.map(el => ({
+        ...el,
+        text: el.isNumberVariable ? formattedNumber : el.text,
+      }));
+      const svgContent = await generateSVGContent(couponElements);
 
-        const couponElements = textElements.map(el => ({
-          ...el,
-          text: el.isNumberVariable ? formattedNumber : el.text,
-        }));
-
-        const svgContent = await generateSVGContent(couponElements);
-
-        const couponData = {
-          id: `coupon-${i}`,
-          number: formattedNumber,
-          elements: couponElements,
-          svgContent : svgContent,
-        };
-
-        coupons.push(couponData);
-
-        // Generate SVG for this coupon (await for fonts!)
-        zip.file(`coupon_${formattedNumber}.svg`, svgContent);
+      let imgData = null;
+      let fileName = `coupon_${formattedNumber}.${format}`;
+      if (format === 'svg') {
+        zip.file(fileName, svgContent);
+      } else {
+        // Use custom resolution, fallback to 400x200 if not set
+        const width = resolution?.width || 400;
+        const height = resolution?.height || 200;
+        const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(svgBlob);
+        const image = new window.Image();
+        imgData = await new Promise<string>((resolve, reject) => {
+          image.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              // Fill white bg for JPG
+              if (format === 'jpg') {
+                ctx!.fillStyle = "#fff";
+                ctx!.fillRect(0, 0, width, height);
+              }
+              ctx?.drawImage(image, 0, 0, width, height);
+              const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+              const dataUrl = canvas.toDataURL(mimeType, 1.0);
+              zip.file(fileName, dataUrl.split(',')[1], { base64: true });
+              resolve(dataUrl);
+            } catch (err) {
+              reject(err);
+            } finally {
+              URL.revokeObjectURL(url);
+            }
+          };
+          image.onerror = reject;
+          image.src = url;
+        });
       }
 
-      // Generate and download ZIP file
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      saveAs(zipBlob, `coupons_${startNumber}-${startNumber + count - 1}.zip`);
+      coupons.push({
+        id: `coupon-${i}`,
+        number: formattedNumber,
+        elements: couponElements,
+        svgContent: svgContent,
+        imgData: imgData,
+      });
+    }
 
-      return coupons;
-    },
-    [textElements, couponTemplate, generateSVGContent]
-  );
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    saveAs(zipBlob, `coupons_${startNumber}-${startNumber + count - 1}.zip`);
+    return coupons;
+  },
+  [textElements, couponTemplate, customFonts]
+);
 
   const exportCoupons = useCallback((coupons: any[]) => {
-    // The export is now handled in generateCoupons function
     console.log('Coupons exported successfully:', coupons.length);
   }, []);
 
@@ -368,14 +409,13 @@ function App() {
       <div className="w-80 bg-white shadow-lg flex flex-col">
         <div className="p-6 border-b border-gray-200">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Coupon Designer</h1>
-          
-          {/* Upload SVG Template */}
+          {/* Upload SVG/PNG/JPG Template */}
           <div className="mb-4">
             <input
               ref={fileInputRef}
               type="file"
-              accept=".svg"
-              onChange={handleSVGUpload}
+              accept=".svg,.png,.jpg,.jpeg"
+              onChange={handleBackgroundUpload}
               className="hidden"
             />
             <button
@@ -383,10 +423,9 @@ function App() {
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Upload className="w-4 h-4" />
-              Upload SVG Template
+              Upload SVG/PNG/JPG Template
             </button>
           </div>
-
           {/* Action Buttons */}
           <div className="grid grid-cols-2 gap-2 mb-4">
             <button
@@ -406,7 +445,6 @@ function App() {
               Add Number
             </button>
           </div>
-
           {/* Quick Actions */}
           <div className="grid grid-cols-3 gap-2 mb-4">
             <button
@@ -453,7 +491,6 @@ function App() {
               Reset
             </button>
           </div>
-
           <button
             onClick={() => setShowNumberGenerator(true)}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
@@ -462,8 +499,6 @@ function App() {
             Generate Coupons
           </button>
         </div>
-
-        {/* Control Panel */}
         <div className="flex-1 overflow-y-auto">
           <ControlPanel
             selectedElement={selectedElement ? (textElements.find(el => el.id === selectedElement) || null) : null}
@@ -473,8 +508,6 @@ function App() {
           />
         </div>
       </div>
-
-      {/* Main Canvas Area */}
       <div className="flex-1 flex flex-col bg-gray-100">
         <div className="flex-1 p-8 overflow-auto">
           <div className="flex justify-center">
@@ -488,8 +521,6 @@ function App() {
           </div>
         </div>
       </div>
-
-      {/* Keyboard Shortcuts Help */}
       <div className="fixed bottom-4 right-4 bg-white p-3 rounded-lg shadow-lg text-xs text-gray-600 max-w-xs">
         <p className="font-medium mb-2">Keyboard Shortcuts:</p>
         <div className="space-y-1">
@@ -501,8 +532,6 @@ function App() {
           <p><kbd className="bg-gray-100 px-1 rounded">Arrow Keys</kbd> Move Selected (Shift for 10px)</p>
         </div>
       </div>
-
-      {/* Modals */}
       {showNumberGenerator && (
         <NumberGenerator
           onClose={() => setShowNumberGenerator(false)}
@@ -510,7 +539,6 @@ function App() {
           onExport={exportCoupons}
         />
       )}
-
       {showFontManager && (
         <FontManager
           fonts={customFonts}
