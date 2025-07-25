@@ -4,6 +4,7 @@ import CouponCanvas from './components/CouponCanvas';
 import ControlPanel from './components/ControlPanel';
 import NumberGenerator from './components/NumberGenerator';
 import FontManager from './components/FontManager';
+import ResizableDraggableImage from './components/ResizableDraggableImage';
 
 export interface TextElement {
   id: string;
@@ -66,13 +67,22 @@ function generateRandomString(length: number, chars: string) {
 }
 // ---
 
+// --- CouponTemplate type for SVG or Image ---
+type CouponTemplate =
+  | { type: 'svg', content: string }
+  | { type: 'img', dataUrl: string, imgType: 'png' | 'jpg', x: number, y: number, width: number, height: number }
+  | null;
+
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 500;
+
 function App() {
   const [textElements, setTextElements] = useState<TextElement[]>([]);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
   const [showNumberGenerator, setShowNumberGenerator] = useState(false);
   const [showFontManager, setShowFontManager] = useState(false);
-  const [couponTemplate, setCouponTemplate] = useState<string>('');
+  const [couponTemplate, setCouponTemplate] = useState<CouponTemplate>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copiedElement, setCopiedElement] = useState<TextElement | null>(null);
 
@@ -246,17 +256,30 @@ function App() {
     if (!file) return;
 
     if (file.type === 'image/svg+xml') {
-      // SVG: read as text
       const reader = new FileReader();
       reader.onload = (e) => {
-        setCouponTemplate(e.target?.result as string);
+        setCouponTemplate({ type: 'svg', content: e.target?.result as string });
       };
       reader.readAsText(file);
     } else if (file.type.startsWith('image/png') || file.type.startsWith('image/jpeg')) {
-      // PNG/JPG: read as data URL and use img as template
+      const imgType = file.type.endsWith('png') ? 'png' : 'jpg';
       const reader = new FileReader();
       reader.onload = (e) => {
-        setCouponTemplate(`<img src="${e.target?.result}" style="width:100%;height:100%;object-fit:cover;display:block;" />`);
+        const img = new window.Image();
+        img.onload = () => {
+          let scale = Math.min(CANVAS_WIDTH / img.width, CANVAS_HEIGHT / img.height, 1);
+          let width = img.width * scale;
+          let height = img.height * scale;
+          let x = (CANVAS_WIDTH - width) / 2;
+          let y = (CANVAS_HEIGHT - height) / 2;
+          setCouponTemplate({
+            type: 'img',
+            dataUrl: e.target?.result as string,
+            imgType,
+            x, y, width, height
+          });
+        };
+        img.src = e.target?.result as string;
       };
       reader.readAsDataURL(file);
     } else {
@@ -301,7 +324,10 @@ function App() {
   // Async SVG generator with embedded fonts
   const generateSVGContent = useCallback(
     async (elements: TextElement[]) => {
-      let svgBase = couponTemplate || defaultTemplate;
+      // Accept new CouponTemplate type
+      let svgBase = couponTemplate && couponTemplate.type === 'svg'
+        ? couponTemplate.content
+        : defaultTemplate;
 
       const usedFonts = customFonts.filter(font =>
         elements.some(el => el.fontFamily === font.family)
@@ -399,7 +425,7 @@ function App() {
     [couponTemplate, customFonts]
   );
 
-  // Updated: support advanced options for number generation
+  // Updated: support advanced options for number generation and PNG/JPG template export
   const generateCoupons = useCallback(
     async (
       startNumber: number,
@@ -424,101 +450,189 @@ function App() {
       const adv = advancedOptions || advanced;
       let sep = adv.separator || '';
 
-    if (adv.customChars && adv.customChars.length > 0) {
-      // Generate random codes with customChars (unique if needed)
-      const generated = new Set<string>();
-      while (numbers.length < count) {
-        let code = generateRandomString(numberLength, adv.customChars);
-        if (adv.uniqueOnly && generated.has(code)) continue;
-        generated.add(code);
-        let result = adv.usePrefix && prefix
-          ? `${prefix}${sep}${code}`
-          : code;
-        result = applyFormatting(result, adv.formatting);
-        numbers.push(result);
+      if (adv.customChars && adv.customChars.length > 0) {
+        // Generate random codes with customChars (unique if needed)
+        const generated = new Set<string>();
+        while (numbers.length < count) {
+          let code = generateRandomString(numberLength, adv.customChars);
+          if (adv.uniqueOnly && generated.has(code)) continue;
+          generated.add(code);
+          let result = adv.usePrefix && prefix
+            ? `${prefix}${sep}${code}`
+            : code;
+          result = applyFormatting(result, adv.formatting);
+          numbers.push(result);
+        }
+      } else {
+        // Sequential generation, format and prefix
+        for (let i = 0; i < count; i++) {
+          let code = (startNumber + i).toString().padStart(numberLength, '0');
+          let result = adv.usePrefix && prefix
+            ? `${prefix}${sep}${code}`
+            : code;
+          result = applyFormatting(result, adv.formatting);
+          numbers.push(result);
+        }
+        if (adv.uniqueOnly) {
+          numbers = Array.from(new Set(numbers));
+        }
       }
-    } else {
-      // Sequential generation, format and prefix
-      for (let i = 0; i < count; i++) {
-        let code = (startNumber + i).toString().padStart(numberLength, '0');
-        let result = adv.usePrefix && prefix
-          ? `${prefix}${sep}${code}`
-          : code;
-        result = applyFormatting(result, adv.formatting);
-        numbers.push(result);
+      if (adv.randomizeOrder) {
+        numbers = numbers
+          .map((n, i) => ({ i, n, sort: Math.random() }))
+          .sort((a, b) => a.sort - b.sort)
+          .map(obj => obj.n);
       }
-      if (adv.uniqueOnly) {
-        numbers = Array.from(new Set(numbers));
-      }
-    }
-    if (adv.randomizeOrder) {
-      numbers = numbers
-        .map((n, i) => ({ i, n, sort: Math.random() }))
-        .sort((a, b) => a.sort - b.sort)
-        .map(obj => obj.n);
-    }
       // ---
 
-      for (let i = 0; i < numbers.length; i++) {
-        const code = numbers[i];
-        const couponElements = textElements.map(el => ({
-          ...el,
-          text: el.isNumberVariable ? code : el.text,
-        }));
-        const svgContent = await generateSVGContent(couponElements);
+      // SVG template flow
+      if (!couponTemplate || couponTemplate.type === 'svg') {
+        for (let i = 0; i < numbers.length; i++) {
+          const code = numbers[i];
+          const couponElements = textElements.map(el => ({
+            ...el,
+            text: el.isNumberVariable ? code : el.text,
+          }));
+          const svgContent = await generateSVGContent(couponElements);
 
-        let imgData = null;
-        let fileName = `coupon_${code}.${format}`;
-        if (format === 'svg') {
-          zip.file(fileName, svgContent);
-        } else {
-          // Use custom resolution, fallback to 400x200 if not set
-          const width = resolution?.width || 400;
-          const height = resolution?.height || 200;
-          const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
-          const url = URL.createObjectURL(svgBlob);
-          const image = new window.Image();
-          imgData = await new Promise<string>((resolve, reject) => {
-            image.onload = () => {
-              try {
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                if (format === 'jpg') {
-                  ctx!.fillStyle = "#fff";
-                  ctx!.fillRect(0, 0, width, height);
+          let imgData = null;
+          let fileName = `coupon_${code}.${format}`;
+          if (format === 'svg') {
+            zip.file(fileName, svgContent);
+          } else {
+            // Use custom resolution, fallback to 400x200 if not set
+            const width = resolution?.width || 400;
+            const height = resolution?.height || 200;
+            const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(svgBlob);
+            const image = new window.Image();
+            imgData = await new Promise<string>((resolve, reject) => {
+              image.onload = () => {
+                try {
+                  const canvas = document.createElement('canvas');
+                  canvas.width = width;
+                  canvas.height = height;
+                  const ctx = canvas.getContext('2d');
+                  if (format === 'jpg') {
+                    ctx!.fillStyle = "#fff";
+                    ctx!.fillRect(0, 0, width, height);
+                  }
+                  ctx?.drawImage(image, 0, 0, width, height);
+                  const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+                  const dataUrl = canvas.toDataURL(mimeType, 1.0);
+                  zip.file(fileName, dataUrl.split(',')[1], { base64: true });
+                  resolve(dataUrl);
+                } catch (err) {
+                  reject(err);
+                } finally {
+                  URL.revokeObjectURL(url);
                 }
-                ctx?.drawImage(image, 0, 0, width, height);
-                const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-                const dataUrl = canvas.toDataURL(mimeType, 1.0);
-                zip.file(fileName, dataUrl.split(',')[1], { base64: true });
-                resolve(dataUrl);
-              } catch (err) {
-                reject(err);
-              } finally {
-                URL.revokeObjectURL(url);
-              }
-            };
-            image.onerror = reject;
-            image.src = url;
+              };
+              image.onerror = reject;
+              image.src = url;
+            });
+          }
+
+          coupons.push({
+            id: `coupon-${i}`,
+            number: code,
+            elements: couponElements,
+            svgContent: svgContent,
+            imgData: imgData,
           });
         }
+      }
+      // PNG/JPG image template flow
+      else if (couponTemplate.type === 'img') {
+        if (format === 'svg') {
+          alert('SVG export is not supported for PNG/JPG backgrounds.');
+          return [];
+        }
+        for (let i = 0; i < numbers.length; i++) {
+          const code = numbers[i];
+          const couponElements = textElements.map(el => ({
+            ...el,
+            text: el.isNumberVariable ? code : el.text,
+          }));
 
-        coupons.push({
-          id: `coupon-${i}`,
-          number: code,
-          elements: couponElements,
-          svgContent: svgContent,
-          imgData: imgData,
-        });
+          const width = resolution?.width || CANVAS_WIDTH;
+          const height = resolution?.height || CANVAS_HEIGHT;
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) continue;
+
+          const baseW = CANVAS_WIDTH;
+          const baseH = CANVAS_HEIGHT;
+          const scaleX = width / baseW;
+          const scaleY = height / baseH;
+
+          // Draw background image at scaled position/size
+          await new Promise<void>((resolve, reject) => {
+            const bgImg = new window.Image();
+            bgImg.onload = () => {
+              ctx.drawImage(
+                bgImg,
+                couponTemplate.x * scaleX,
+                couponTemplate.y * scaleY,
+                couponTemplate.width * scaleX,
+                couponTemplate.height * scaleY
+              );
+              resolve();
+            };
+            bgImg.onerror = reject;
+            bgImg.src = couponTemplate.dataUrl;
+          });
+
+          // Draw overlays at scaled positions/sizes
+          for (const el of couponElements) {
+            ctx.save();
+            ctx.font = `${el.isNumberVariable ? 'bold ' : ''}${el.fontSize * scaleY}px "${el.fontFamily}"`;
+            ctx.fillStyle = el.fontColor || (el.isNumberVariable ? '#7C3AED' : '#1F2937');
+            ctx.textAlign = el.textAlign || 'left';
+            ctx.textBaseline = 'top';
+            ctx.globalAlpha = 1.0;
+            if (el.backgroundColor && el.backgroundColor !== 'transparent') {
+              ctx.fillStyle = el.backgroundColor;
+              ctx.fillRect(
+                el.x * scaleX,
+                el.y * scaleY,
+                el.width * scaleX,
+                el.height * scaleY
+              );
+              ctx.fillStyle = el.fontColor || (el.isNumberVariable ? '#7C3AED' : '#1F2937');
+            }
+            const lines = String(el.text).split('\n');
+            for (let j = 0; j < lines.length; j++) {
+              ctx.fillText(
+                lines[j] || ' ',
+                el.x * scaleX,
+                (el.y + j * el.fontSize * (el.lineHeight && el.lineHeight !== 'auto' ? Number(el.lineHeight) : 1.2)) * scaleY
+              );
+            }
+            ctx.restore();
+          }
+
+          // Export as PNG/JPG
+          const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+          const imgData = canvas.toDataURL(mimeType, 1.0);
+          zip.file(`coupon_${code}.${format}`, imgData.split(',')[1], { base64: true });
+
+          coupons.push({
+            id: `coupon-${i}`,
+            number: code,
+            elements: couponElements,
+            imgData,
+          });
+        }
       }
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       saveAs(zipBlob, `coupons_${numbers[0] || '0000'}-${numbers[numbers.length - 1] || 'end'}.zip`);
       return coupons;
     },
-    [textElements, couponTemplate, customFonts, advanced]
+    [textElements, couponTemplate, customFonts, advanced, generateSVGContent]
   );
 
   const exportCoupons = useCallback((coupons: any[]) => {
@@ -529,7 +643,7 @@ function App() {
   const resetCanvas = useCallback(() => {
     setTextElements([]);
     setSelectedElement(null);
-    setCouponTemplate('');
+    setCouponTemplate(null);
   }, []);
 
   // Responsive drawer for Control Panel
@@ -635,13 +749,14 @@ function App() {
               className="relative shadow-xl border border-gray-100 flex items-center justify-center"
               style={{ width: 850, height: 550, minWidth: 320, minHeight: 200, background: '#F3F4F6' }}
             >
-              <CouponCanvas
-                textElements={textElements}
-                onUpdateElement={updateElement}
-                onSelectElement={selectElement}
-                selectedElement={selectedElement}
-                couponTemplate={couponTemplate}
-              />
+            <CouponCanvas
+              textElements={textElements}
+              onUpdateElement={updateElement}
+              onSelectElement={selectElement}
+              selectedElement={selectedElement}
+              couponTemplate={couponTemplate}
+              setCouponTemplate={setCouponTemplate}
+            />
             </div>
           </div>
         </main>
@@ -693,6 +808,7 @@ function App() {
           onClose={() => setShowNumberGenerator(false)}
           onGenerate={generateCoupons}
           onExport={exportCoupons}
+          couponTemplate={couponTemplate}
         />
       )}
       {showFontManager && (

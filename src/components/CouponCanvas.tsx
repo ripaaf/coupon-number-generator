@@ -1,21 +1,28 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import DraggableText from './DraggableText';
+import ResizableDraggableImage from './ResizableDraggableImage';
 import { TextElement } from '../App';
 import { Eye, EyeOff } from 'lucide-react';
+
+type CouponTemplate =
+  | { type: 'svg', content: string }
+  | { type: 'img', dataUrl: string, imgType: 'png' | 'jpg', x: number, y: number, width: number, height: number }
+  | null;
 
 interface CouponCanvasProps {
   textElements: TextElement[];
   onUpdateElement: (id: string, updates: Partial<TextElement>) => void;
   onSelectElement: (id: string | null) => void;
   selectedElement: string | null;
-  couponTemplate: string;
+  couponTemplate: CouponTemplate;
+  setCouponTemplate: (t: CouponTemplate) => void;
 }
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 500;
-const GRID_SPACING = 30; // px
-const GRID_COLOR = "#E3E3E3"; // subtle gray-200
-const GRID_BG = "#f3f4f6"; // subtle gray-100
+const GRID_SPACING = 30;
+const GRID_COLOR = "#E3E3E3";
+const GRID_BG = "#f3f4f6";
 
 const CouponCanvas: React.FC<CouponCanvasProps> = ({
   textElements,
@@ -23,15 +30,19 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
   onSelectElement,
   selectedElement,
   couponTemplate,
+  setCouponTemplate,
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
-
-  // Border/shadow toggle
   const [showBorder, setShowBorder] = useState(false);
 
+  // Image selection
+  const [imgSelected, setImgSelected] = useState(false);
+
+  // Deselect on blank click
   const handleCanvasClick = useCallback((event: React.MouseEvent) => {
     if (event.target === canvasRef.current || event.target === event.currentTarget) {
       onSelectElement(null);
+      setImgSelected(false);
     }
   }, [onSelectElement]);
 
@@ -39,48 +50,26 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
   const [showTips, setShowTips] = useState(false);
   const tipsRef = useRef<HTMLDivElement>(null);
 
-  // Close tips when clicking outside
   useEffect(() => {
     if (!showTips) return;
     function handleClick(e: MouseEvent) {
-      if (
-        tipsRef.current &&
-        !tipsRef.current.contains(e.target as Node)
-      ) {
-        setShowTips(false);
-      }
+      if (tipsRef.current && !tipsRef.current.contains(e.target as Node)) setShowTips(false);
     }
     document.addEventListener('mousedown', handleClick, true);
     return () => document.removeEventListener('mousedown', handleClick, true);
   }, [showTips]);
 
-  // SVG Grid
   const renderGrid = () => {
     const cols = Math.floor(CANVAS_WIDTH / GRID_SPACING);
     const rows = Math.floor(CANVAS_HEIGHT / GRID_SPACING);
     const dots: JSX.Element[] = [];
-
     for (let x = 0; x <= cols; x++) {
       for (let y = 0; y <= rows; y++) {
-        dots.push(
-          <circle
-            key={`dot-${x}-${y}`}
-            cx={x * GRID_SPACING}
-            cy={y * GRID_SPACING}
-            r={1.2}
-            fill={GRID_COLOR}
-          />
-        );
+        dots.push(<circle key={`dot-${x}-${y}`} cx={x * GRID_SPACING} cy={y * GRID_SPACING} r={1.2} fill={GRID_COLOR} />);
       }
     }
-
     return (
-      <svg
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
-        className="absolute inset-0 z-0 pointer-events-none"
-        style={{ display: 'block' }}
-      >
+      <svg width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="absolute inset-0 z-0 pointer-events-none" style={{ display: 'block' }}>
         <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill={GRID_BG} />
         {dots}
       </svg>
@@ -89,7 +78,6 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
 
   const showHelper = textElements.length === 0 && !couponTemplate;
 
-  // Compose className for canvas container
   const canvasClass = [
     "relative",
     showBorder ? "border border-gray-200 shadow-xl overflow-visible" : "",
@@ -114,10 +102,7 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
         <button
           className="absolute top-[-1rem] right-[-1rem] z-50 bg-white/80 hover:bg-white/90 border border-gray-200 rounded-full p-2 shadow transition focus:outline-none"
           style={{ backdropFilter: 'blur(4px)' }}
-          onClick={e => {
-            e.stopPropagation();
-            setShowBorder(b => !b);
-          }}
+          onClick={e => { e.stopPropagation(); setShowBorder(b => !b); }}
           title={showBorder ? "Hide border/shadow" : "Show border/shadow"}
           type="button"
         >
@@ -131,13 +116,27 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
         {/* Grid */}
         {renderGrid()}
 
+        {/* Image Background (Resizable/Draggable) */}
+        {couponTemplate && couponTemplate.type === 'img' && (
+          <ResizableDraggableImage
+            x={couponTemplate.x}
+            y={couponTemplate.y}
+            width={couponTemplate.width}
+            height={couponTemplate.height}
+            src={couponTemplate.dataUrl}
+            selected={imgSelected}
+            onChange={props => setCouponTemplate({ ...couponTemplate, ...props })}
+            onSelect={() => { setImgSelected(true); onSelectElement(null); }}
+          />
+        )}
+
         {/* SVG Background (if any) */}
-        {couponTemplate && (
+        {couponTemplate && couponTemplate.type === 'svg' && (
           <div
             className="absolute inset-0 pointer-events-none select-none"
             style={{ zIndex: 1 }}
             dangerouslySetInnerHTML={{
-              __html: couponTemplate,
+              __html: couponTemplate.content,
             }}
           />
         )}
@@ -148,18 +147,18 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
             key={element.id}
             element={element}
             isSelected={element.id === selectedElement}
-            onUpdate={(updates) => onUpdateElement(element.id, updates)}
-            onSelect={() => onSelectElement(element.id)}
+            onUpdate={updates => onUpdateElement(element.id, updates)}
+            onSelect={() => { onSelectElement(element.id); setImgSelected(false); }}
             canvasRef={canvasRef}
           />
         ))}
 
-        {/* Helper text when canvas is empty and no template */}
+        {/* Helper text */}
         {showHelper && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
             <div className="text-center text-gray-400">
               <p className="text-xl font-semibold mb-2">Start designing your coupon</p>
-              <p className="text-sm">Add text or upload a SVG to begin</p>
+              <p className="text-sm">Add text or upload a SVG/PNG/JPG to begin</p>
             </div>
           </div>
         )}
@@ -197,6 +196,7 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
                   <li>Use arrow keys for precise movement</li>
                   <li>Sidebar buttons: Copy, Paste, Delete, Duplicate</li>
                   <li>Keyboard: T/N = add text/number, Ctrl+C/V = Copy/Paste</li>
+                  <li>Click the image to move/resize it</li>
                 </ul>
               </div>
             </div>

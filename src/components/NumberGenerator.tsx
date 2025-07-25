@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { X, Hash, FileText, Link as LinkIcon, Unlink } from 'lucide-react';
 
+// Accept new CouponTemplate type as prop (optional)
+type CouponTemplate =
+  | { type: 'svg', content: string }
+  | { type: 'img', dataUrl: string, imgType: 'png' | 'jpg' }
+  | null;
+
 interface AdvancedOptions {
   formatting: 'uppercase' | 'lowercase' | 'randomcase';
   customChars: string;
@@ -22,6 +28,7 @@ interface NumberGeneratorProps {
     advanced?: AdvancedOptions
   ) => Promise<any[]>;
   onExport: (coupons: any[]) => void;
+  couponTemplate?: CouponTemplate;
 }
 
 function getNumberLength(input: string | number) {
@@ -50,7 +57,6 @@ function applyFormatting(str: string, formatting: AdvancedOptions['formatting'])
     case 'uppercase': return str.toUpperCase();
     case 'lowercase': return str.toLowerCase();
     case 'randomcase':
-      // Nana: Make it whimsical
       return Array.from(str).map(char =>
         Math.random() > 0.5 ? char.toUpperCase() : char.toLowerCase()
       ).join('');
@@ -70,6 +76,7 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
   onClose,
   onGenerate,
   onExport,
+  couponTemplate,
 }) => {
   const [startNumberStr, setStartNumberStr] = useState('001');
   const [count, setCount] = useState(10);
@@ -84,11 +91,18 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
   const [linked, setLinked] = useState(true);
   const [svgAspectRatio, setSvgAspectRatio] = useState<number>(DEFAULT_ASPECT_RATIO);
 
-  const [loading, setLoading] = useState(false); // Nana: Loading state
+  const [loading, setLoading] = useState(false);
 
   // Advanced generation state
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advanced, setAdvanced] = useState<AdvancedOptions>({ ...defaultAdvanced });
+
+  // Disable SVG export if background is PNG/JPG
+  const allowedFormats: ('svg' | 'png' | 'jpg')[] = (
+    couponTemplate && couponTemplate.type === 'img'
+      ? ['png', 'jpg']
+      : ['svg', 'png', 'jpg']
+  );
 
   useEffect(() => {
     if (
@@ -143,7 +157,7 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
       setPreviewIndex(0);
       await onExport(coupons);
     } catch (error) {
-      // Nana: For the master, show a toast or error here if you want
+      // show a toast or error here if you want
     } finally {
       setLoading(false);
     }
@@ -356,10 +370,15 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   disabled={loading}
                 >
-                  <option value="svg">SVG</option>
-                  <option value="png">PNG</option>
-                  <option value="jpg">JPG</option>
+                  {allowedFormats.map(opt => (
+                    <option key={opt} value={opt}>{opt.toUpperCase()}</option>
+                  ))}
                 </select>
+                {couponTemplate && couponTemplate.type === 'img' && (
+                  <div className="text-xs text-red-500 mt-1">
+                    SVG export is not available for image backgrounds.
+                  </div>
+                )}
               </div>
 
               {/* Resolution inputs if not SVG */}
