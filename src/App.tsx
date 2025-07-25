@@ -18,6 +18,9 @@ export interface TextElement {
   isNumberVariable: boolean;
   backgroundColor?: string;
   fontColor?: string;
+  letterSpacing?: number;
+  textAlign?: 'left' | 'center' | 'right';
+  lineHeight?: number | "auto";
 }
 
 export interface CustomFont {
@@ -58,7 +61,7 @@ function App() {
   const addNumberVariable = useCallback(() => {
     const newElement: TextElement = {
       id: `number-${Date.now()}`,
-      text: '0001',
+      text: '001',
       x: 150,
       y: 150,
       fontSize: 20,
@@ -256,59 +259,89 @@ function App() {
   `;
 
   // Async SVG generator with embedded fonts
-  const generateSVGContent = useCallback(
-    async (elements: TextElement[]) => {
-      let svgBase = couponTemplate || defaultTemplate;
+const generateSVGContent = useCallback(
+  async (elements: TextElement[]) => {
+    let svgBase = couponTemplate || defaultTemplate;
 
-      const usedFonts = customFonts.filter(font =>
-        elements.some(el => el.fontFamily === font.family)
-      );
+    const usedFonts = customFonts.filter(font =>
+      elements.some(el => el.fontFamily === font.family)
+    );
 
-      const fontFaceCSS = await Promise.all(
-        usedFonts.map(async (font) => {
-          const base64 = await fetchFontBase64(font.url);
-          if (!base64) return '';
-          const ext = font.url.split('.').pop()?.toLowerCase();
-          let format = 'truetype';
-          if (ext === 'woff') format = 'woff';
-          if (ext === 'woff2') format = 'woff2';
-          if (ext === 'otf') format = 'opentype';
-          return `
-            @font-face {
-              font-family: '${font.family}';
-              src: url(data:font/${format};base64,${base64}) format('${format}');
-              font-weight: normal;
-              font-style: normal;
-            }
-          `;
-        })
-      );
-
-      const styleTag = fontFaceCSS.join('\n').trim()
-        ? `<style><![CDATA[\n${fontFaceCSS.join('\n')}\n]]></style>`
-        : '';
-
-      const textNodes = elements.map(el => `
-        <g>
-          ${el.backgroundColor && el.backgroundColor !== "transparent"
-            ? `<rect x="${el.x}" y="${el.y}" width="${el.width}" height="${el.height}" fill="${el.backgroundColor}" rx="4"/>`
-            : ""
+    const fontFaceCSS = await Promise.all(
+      usedFonts.map(async (font) => {
+        const base64 = await fetchFontBase64(font.url);
+        if (!base64) return '';
+        const ext = font.url.split('.').pop()?.toLowerCase();
+        let format = 'truetype';
+        if (ext === 'woff') format = 'woff';
+        if (ext === 'woff2') format = 'woff2';
+        if (ext === 'otf') format = 'opentype';
+        return `
+          @font-face {
+            font-family: '${font.family}';
+            src: url(data:font/${format};base64,${base64}) format('${format}');
+            font-weight: normal;
+            font-style: normal;
           }
-          <text x="${el.x + el.width/2}" y="${el.y + el.height/2}"
-            text-anchor="middle" dominant-baseline="middle"
-            font-family="${el.fontFamily}" font-size="${el.fontSize}"
+        `;
+      })
+    );
+
+    const getTextAnchor = (align?: string) => {
+      if (align === 'center') return 'middle';
+      if (align === 'right') return 'end';
+      return 'start';
+    };
+    const getTextX = (el: TextElement) => {
+      if (el.textAlign === 'center') return el.x + el.width / 2;
+      if (el.textAlign === 'right') return el.x + el.width;
+      return el.x;
+    };
+
+    const styleTag = fontFaceCSS.join('\n').trim()
+      ? `<style><![CDATA[\n${fontFaceCSS.join('\n')}\n]]></style>`
+      : '';
+
+    const textNodes = elements.map(el => {
+      const borderRadius = 6;
+      const borderWidth = 1;
+      const hasBackground = el.backgroundColor && el.backgroundColor !== "transparent";
+      // BORDER IS ALWAYS TRANSPARENT
+      return `
+        <g>
+          <rect
+            x="${el.x}"
+            y="${el.y}"
+            width="${el.width}"
+            height="${el.height}"
+            fill="${hasBackground ? el.backgroundColor : 'none'}"
+            stroke="transparent"
+            stroke-width="${borderWidth}"
+            rx="${borderRadius}"
+          />
+          <text
+            x="${getTextX(el)}"
+            y="${el.y + el.height / 2}"
+            text-anchor="${getTextAnchor(el.textAlign)}"
+            dominant-baseline="middle"
+            font-family="${el.fontFamily}"
+            font-size="${el.fontSize}"
             fill="${el.fontColor || (el.isNumberVariable ? '#7C3AED' : '#1F2937')}"
-            font-weight="${el.isNumberVariable ? 'bold' : 'normal'}">
+            font-weight="${el.isNumberVariable ? 'bold' : 'normal'}"
+            letter-spacing="${el.letterSpacing ? el.letterSpacing : 0}"
+          >
             ${el.text}
           </text>
         </g>
-      `).join('');
+      `;
+    }).join('');
 
-      svgBase = svgBase.replace('</svg>', `${styleTag}${textNodes}</svg>`);
-      return svgBase;
-    },
-    [couponTemplate, customFonts]
-  );
+    svgBase = svgBase.replace('</svg>', `${styleTag}${textNodes}</svg>`);
+    return svgBase;
+  },
+  [couponTemplate, customFonts]
+);
+
 
   // Updated: support export as SVG, PNG, or JPG
 const generateCoupons = useCallback(
@@ -519,17 +552,6 @@ const generateCoupons = useCallback(
               couponTemplate={couponTemplate}
             />
           </div>
-        </div>
-      </div>
-      <div className="fixed bottom-4 right-4 bg-white p-3 rounded-lg shadow-lg text-xs text-gray-600 max-w-xs">
-        <p className="font-medium mb-2">Keyboard Shortcuts:</p>
-        <div className="space-y-1">
-          <p><kbd className="bg-gray-100 px-1 rounded">T</kbd> Add Text</p>
-          <p><kbd className="bg-gray-100 px-1 rounded">N</kbd> Add Number</p>
-          <p><kbd className="bg-gray-100 px-1 rounded">Ctrl+C</kbd> Copy</p>
-          <p><kbd className="bg-gray-100 px-1 rounded">Ctrl+V</kbd> Paste</p>
-          <p><kbd className="bg-gray-100 px-1 rounded">Del</kbd> Delete</p>
-          <p><kbd className="bg-gray-100 px-1 rounded">Arrow Keys</kbd> Move Selected (Shift for 10px)</p>
         </div>
       </div>
       {showNumberGenerator && (

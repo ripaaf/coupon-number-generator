@@ -17,9 +17,24 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 }) => {
   if (!selectedElement) {
     return (
-      <div className="p-6 text-center text-gray-500">
-        <Type className="w-12 h-12 mx-auto mb-3 opacity-50" />
-        <p className="text-sm">Select an element to edit its properties</p>
+      <div className="p-6 text-center text-gray-500 flex gap-20 flex-col">
+        <div>
+          <Type className="w-12 h-12 mx-auto mb-3 opacity-50" />
+          <p className="text-sm">Select an element to edit its properties</p>
+        </div>
+
+      <div className="bg-white p-3 rounded-lg shadow-lg text-xs text-gray-600 max-w-xs">
+        <p className="font-medium mb-2">Keyboard Shortcuts:</p>
+        <div className="space-y-1">
+          <p><kbd className="bg-gray-100 px-1 rounded">T</kbd> Add Text</p>
+          <p><kbd className="bg-gray-100 px-1 rounded">N</kbd> Add Number</p>
+          <p><kbd className="bg-gray-100 px-1 rounded">Ctrl+C</kbd> Copy</p>
+          <p><kbd className="bg-gray-100 px-1 rounded">Ctrl+V</kbd> Paste</p>
+          <p><kbd className="bg-gray-100 px-1 rounded">Del</kbd> Delete</p>
+          <p><kbd className="bg-gray-100 px-1 rounded">Arrow Keys</kbd> Move Selected (Shift for 10px)</p>
+        </div>
+      </div>
+
       </div>
     );
   }
@@ -30,6 +45,10 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   ];
 
   const allFonts = [...systemFonts, ...customFonts.map(f => f.family)];
+  const letterSpacingValue = selectedElement.letterSpacing ?? 0;
+  const textAlignValue = selectedElement.textAlign ?? 'left';
+  const lineHeightValue = selectedElement.lineHeight ?? "auto";
+  const isAuto = lineHeightValue === "auto";
 
   return (
     <div className="p-6 space-y-6">
@@ -62,7 +81,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           onChange={(e) => onUpdateElement(selectedElement.id, { text: e.target.value })}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
           rows={2}
-          placeholder={selectedElement.isNumberVariable ? "000001" : "Enter text..."}
+          placeholder={selectedElement.isNumberVariable ? "001" : "Enter text..."}
         />
         {selectedElement.isNumberVariable && (
           <p className="text-xs text-gray-500 mt-1">
@@ -94,32 +113,32 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
       </div>
 
       {/* Font Color */}
-<div>
-  <label className="block text-sm font-medium text-gray-700 mb-2">Font Color</label>
-  <input
-    type="color"
-    value={selectedElement.fontColor || "#1F2937"}
-    onChange={e => onUpdateElement(selectedElement.id, { fontColor: e.target.value })}
-    className="w-full h-10"
-  />
-</div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Font Color</label>
+        <input
+          type="color"
+          value={selectedElement.fontColor || "#1F2937"}
+          onChange={e => onUpdateElement(selectedElement.id, { fontColor: e.target.value })}
+          className="w-full h-10"
+        />
+      </div>
 
-{/* Background Color */}
-<div>
-  <label className="block text-sm font-medium text-gray-700 mb-2">Background Color</label>
-  <input
-    type="color"
-    value={selectedElement.backgroundColor || "transparent"}
-    onChange={e => onUpdateElement(selectedElement.id, { backgroundColor: e.target.value })}
-    className="w-full h-10"
-  />
-  <button
-    onClick={() => onUpdateElement(selectedElement.id, { backgroundColor: "transparent" })}
-    className="mt-1 text-xs text-blue-600 underline"
-  >
-    Set Transparent
-  </button>
-</div>
+      {/* Background Color */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Background Color</label>
+        <input
+          type="color"
+          value={selectedElement.backgroundColor || "transparent"}
+          onChange={e => onUpdateElement(selectedElement.id, { backgroundColor: e.target.value })}
+          className="w-full h-10"
+        />
+        <button
+          onClick={() => onUpdateElement(selectedElement.id, { backgroundColor: "transparent" })}
+          className="mt-1 text-xs text-blue-600 underline"
+        >
+          Set Transparent
+        </button>
+      </div>
 
       {/* Size */}
       <div className="grid grid-cols-2 gap-4">
@@ -188,6 +207,76 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
       </div>
 
+      {/* Letter Spacing */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Letter Spacing: {letterSpacingValue}px
+        </label>
+        <input
+          type="number"
+          min="-10"
+          max="100"
+          value={letterSpacingValue}
+          onChange={(e) => onUpdateElement(selectedElement.id, { letterSpacing: parseInt(e.target.value) || 0 })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
+      {/* Line Height */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Line Height
+        </label>
+        <div className="flex gap-2 items-center">
+          <input
+            type="number"
+            min="0.5"
+            max="3"
+            step="0.05"
+            value={isAuto ? "" : lineHeightValue}
+            onChange={e => {
+              if (!isAuto) {
+                const val = parseFloat(e.target.value);
+                onUpdateElement(
+                  selectedElement.id,
+                  { lineHeight: isNaN(val) ? 1.2 : val }
+                );
+              }
+            }}
+            className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={isAuto}
+            placeholder="auto"
+          />
+          <label className="flex items-center gap-1 text-xs">
+            <input
+              type="checkbox"
+              checked={isAuto}
+              onChange={e =>
+                onUpdateElement(
+                  selectedElement.id,
+                  { lineHeight: e.target.checked ? "auto" : 1.2 }
+                )
+              }
+            />
+            Auto
+          </label>
+        </div>
+      </div>
+
+      {/* Text Alignment */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Text Alignment</label>
+        <select
+          value={textAlignValue}
+          onChange={e => onUpdateElement(selectedElement.id, { textAlign: e.target.value as 'left' | 'center' | 'right' })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </div>
+
       {/* Preview */}
       <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
         <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
@@ -197,6 +286,14 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             fontFamily: selectedElement.fontFamily,
             color: selectedElement.isNumberVariable ? '#7C3AED' : '#1F2937',
             fontWeight: selectedElement.isNumberVariable ? 'bold' : 'normal',
+            letterSpacing: `${letterSpacingValue}px`,
+            lineHeight: lineHeightValue,
+            textAlign: textAlignValue as any,
+            backgroundColor: selectedElement.backgroundColor && selectedElement.backgroundColor !== 'transparent'
+              ? selectedElement.backgroundColor
+              : undefined,
+            width: '100%',
+            whiteSpace: 'pre-line',
           }}
         >
           {selectedElement.text}
