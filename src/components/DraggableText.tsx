@@ -117,7 +117,7 @@ const DraggableText: React.FC<DraggableTextProps> = ({
       onMouseDown={handleMouseDown}
     >
       <div
-        className={`text-content w-full h-full px-2 py-1 overflow-hidden pointer-events-none whitespace-pre-line`}
+        className={`text-content w-full h-full py-1 overflow-hidden pointer-events-none whitespace-pre-line`}
         style={{
           fontSize: element.fontSize,
           fontFamily: element.fontFamily,

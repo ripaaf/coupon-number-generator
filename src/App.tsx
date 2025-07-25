@@ -543,7 +543,7 @@ function App() {
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 font-inter">
       {/* --- Top Action Bar --- */}
       <nav className="sticky top-0 z-20 bg-white/90 backdrop-blur-md shadow-md px-2 sm:px-6 py-2 flex items-center gap-2 sm:gap-4 border-b border-gray-100">
-        <span className="text-xl font-bold text-blue-700 tracking-tight mr-3 select-none">Coupon Designer</span>
+        <span className="text-xl font-bold text-blue-700 tracking-tight mr-3 select-none">Coupon Canvas</span>
         <button
           onClick={addTextElement}
           className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-green-500/90 hover:bg-green-600 transition text-white rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
@@ -632,8 +632,8 @@ function App() {
         <main className="flex-1 flex justify-center items-center bg-gradient-to-br from-gray-100 via-white to-blue-100 min-h-[calc(100vh-64px)]">
           <div className="w-full flex justify-center items-center h-full overflow-auto">
             <div
-              className="relative bg-white rounded-2xl shadow-xl border border-gray-100 flex items-center justify-center"
-              style={{ width: 800, height: 500, minWidth: 320, minHeight: 200 }}
+              className="relative shadow-xl border border-gray-100 flex items-center justify-center"
+              style={{ width: 850, height: 550, minWidth: 320, minHeight: 200, background: '#F3F4F6' }}
             >
               <CouponCanvas
                 textElements={textElements}

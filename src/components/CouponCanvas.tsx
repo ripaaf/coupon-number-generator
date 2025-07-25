@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import DraggableText from './DraggableText';
 import { TextElement } from '../App';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface CouponCanvasProps {
   textElements: TextElement[];
@@ -24,6 +25,9 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
   couponTemplate,
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Border/shadow toggle
+  const [showBorder, setShowBorder] = useState(false);
 
   const handleCanvasClick = useCallback((event: React.MouseEvent) => {
     if (event.target === canvasRef.current || event.target === event.currentTarget) {
@@ -85,11 +89,17 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
 
   const showHelper = textElements.length === 0 && !couponTemplate;
 
+  // Compose className for canvas container
+  const canvasClass = [
+    "relative",
+    showBorder ? "border border-gray-200 shadow-xl overflow-visible" : "",
+  ].join(" ");
+
   return (
     <div className="flex justify-center items-center w-full flex-col">
       <div
         ref={canvasRef}
-        className="relative border border-gray-200 rounded-2xl shadow-xl overflow-hidden"
+        className={canvasClass}
         style={{
           width: `${CANVAS_WIDTH}px`,
           height: `${CANVAS_HEIGHT}px`,
@@ -100,6 +110,24 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
         onClick={handleCanvasClick}
         tabIndex={0}
       >
+        {/* Border/shadow toggle button */}
+        <button
+          className="absolute top-[-1rem] right-[-1rem] z-50 bg-white/80 hover:bg-white/90 border border-gray-200 rounded-full p-2 shadow transition focus:outline-none"
+          style={{ backdropFilter: 'blur(4px)' }}
+          onClick={e => {
+            e.stopPropagation();
+            setShowBorder(b => !b);
+          }}
+          title={showBorder ? "Hide border/shadow" : "Show border/shadow"}
+          type="button"
+        >
+          {showBorder ? (
+            <EyeOff className="w-5 h-5 text-gray-500" />
+          ) : (
+            <Eye className="w-5 h-5 text-gray-400" />
+          )}
+        </button>
+
         {/* Grid */}
         {renderGrid()}
 
