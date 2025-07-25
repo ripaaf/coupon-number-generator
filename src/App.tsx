@@ -555,29 +555,27 @@ function App() {
             text: el.isNumberVariable ? code : el.text,
           }));
 
-          const width = resolution?.width || CANVAS_WIDTH;
-          const height = resolution?.height || CANVAS_HEIGHT;
+          // Use the image dimensions for the crop
+          const imgX = couponTemplate.x;
+          const imgY = couponTemplate.y;
+          const imgW = couponTemplate.width;
+          const imgH = couponTemplate.height;
+
+          // Create a canvas for just the image area
           const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
+          canvas.width = imgW;
+          canvas.height = imgH;
           const ctx = canvas.getContext('2d');
           if (!ctx) continue;
 
-          const baseW = CANVAS_WIDTH;
-          const baseH = CANVAS_HEIGHT;
-          const scaleX = width / baseW;
-          const scaleY = height / baseH;
-
-          // Draw background image at scaled position/size
+          // Draw the background image (just the cropped part)
           await new Promise<void>((resolve, reject) => {
             const bgImg = new window.Image();
             bgImg.onload = () => {
               ctx.drawImage(
                 bgImg,
-                couponTemplate.x * scaleX,
-                couponTemplate.y * scaleY,
-                couponTemplate.width * scaleX,
-                couponTemplate.height * scaleY
+                imgX, imgY, imgW, imgH, // source: crop this area from original
+                0, 0, imgW, imgH        // destination: draw at (0,0) in new canvas
               );
               resolve();
             };
@@ -585,10 +583,16 @@ function App() {
             bgImg.src = couponTemplate.dataUrl;
           });
 
-          // Draw overlays at scaled positions/sizes
+          // Draw overlays, offsetting by -imgX, -imgY to align correctly
           for (const el of couponElements) {
+            // Only draw overlays that are within the image area (optional)
+            if (
+              el.x + el.width < imgX || el.y + el.height < imgY ||
+              el.x > imgX + imgW || el.y > imgY + imgH
+            ) continue;
+
             ctx.save();
-            ctx.font = `${el.isNumberVariable ? 'bold ' : ''}${el.fontSize * scaleY}px "${el.fontFamily}"`;
+            ctx.font = `${el.isNumberVariable ? 'bold ' : ''}${el.fontSize}px "${el.fontFamily}"`;
             ctx.fillStyle = el.fontColor || (el.isNumberVariable ? '#7C3AED' : '#1F2937');
             ctx.textAlign = el.textAlign || 'left';
             ctx.textBaseline = 'top';
@@ -596,10 +600,10 @@ function App() {
             if (el.backgroundColor && el.backgroundColor !== 'transparent') {
               ctx.fillStyle = el.backgroundColor;
               ctx.fillRect(
-                el.x * scaleX,
-                el.y * scaleY,
-                el.width * scaleX,
-                el.height * scaleY
+                el.x - imgX,
+                el.y - imgY,
+                el.width,
+                el.height
               );
               ctx.fillStyle = el.fontColor || (el.isNumberVariable ? '#7C3AED' : '#1F2937');
             }
@@ -607,8 +611,8 @@ function App() {
             for (let j = 0; j < lines.length; j++) {
               ctx.fillText(
                 lines[j] || ' ',
-                el.x * scaleX,
-                (el.y + j * el.fontSize * (el.lineHeight && el.lineHeight !== 'auto' ? Number(el.lineHeight) : 1.2)) * scaleY
+                (el.x - imgX),
+                (el.y - imgY) + j * el.fontSize * (el.lineHeight && el.lineHeight !== 'auto' ? Number(el.lineHeight) : 1.2)
               );
             }
             ctx.restore();
