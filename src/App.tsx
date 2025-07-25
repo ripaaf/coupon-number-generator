@@ -306,7 +306,28 @@ const generateSVGContent = useCallback(
       const borderRadius = 6;
       const borderWidth = 1;
       const hasBackground = el.backgroundColor && el.backgroundColor !== "transparent";
-      // BORDER IS ALWAYS TRANSPARENT
+      const lines = String(el.text).split('\n');
+      const isAuto = !el.lineHeight || el.lineHeight === "auto";
+      const fontSize = el.fontSize;
+      const lineHeight = isAuto ? 1.2 : Number(el.lineHeight); // HTML default is 1.2
+
+      let textY: number;
+      let tspans: string;
+
+      if (isAuto) {
+        // Vertically center the whole block
+        textY = el.y + el.height / 2;
+        tspans = lines.map((line, i) =>
+          `<tspan x="${getTextX(el)}" dy="${i === 0 ? 0 : fontSize * lineHeight}">${line || ' '}</tspan>`
+        ).join('');
+      } else {
+        // Top align the block, use custom line height
+        textY = el.y + fontSize;
+        tspans = lines.map((line, i) =>
+          `<tspan x="${getTextX(el)}" dy="${i === 0 ? 0 : fontSize * lineHeight}">${line || ' '}</tspan>`
+        ).join('');
+      }
+
       return `
         <g>
           <rect
@@ -321,17 +342,15 @@ const generateSVGContent = useCallback(
           />
           <text
             x="${getTextX(el)}"
-            y="${el.y + el.height / 2}"
+            y="${textY}"
             text-anchor="${getTextAnchor(el.textAlign)}"
-            dominant-baseline="middle"
             font-family="${el.fontFamily}"
             font-size="${el.fontSize}"
             fill="${el.fontColor || (el.isNumberVariable ? '#7C3AED' : '#1F2937')}"
             font-weight="${el.isNumberVariable ? 'bold' : 'normal'}"
             letter-spacing="${el.letterSpacing ? el.letterSpacing : 0}"
-          >
-            ${el.text}
-          </text>
+            ${isAuto ? 'dominant-baseline="middle"' : 'dominant-baseline="hanging"'}
+          >${tspans}</text>
         </g>
       `;
     }).join('');
@@ -436,124 +455,158 @@ const generateCoupons = useCallback(
     setCouponTemplate('');
   }, []);
 
+  // Responsive drawer for Control Panel
+  const [controlPanelOpen, setControlPanelOpen] = useState(true); // Always open on desktop
+
+  // This effect will auto-open the panel when an element is selected (on mobile)
+  useEffect(() => {
+    if (selectedElement) setControlPanelOpen(true);
+  }, [selectedElement]);
+
+
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <div className="w-80 bg-white shadow-lg flex flex-col">
-        <div className="p-6 border-b border-gray-200">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Coupon Designer</h1>
-          {/* Upload SVG/PNG/JPG Template */}
-          <div className="mb-4">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".svg,.png,.jpg,.jpeg"
-              onChange={handleBackgroundUpload}
-              className="hidden"
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 font-inter">
+      {/* --- Top Action Bar --- */}
+      <nav className="sticky top-0 z-20 bg-white/90 backdrop-blur-md shadow-md px-2 sm:px-6 py-2 flex items-center gap-2 sm:gap-4 border-b border-gray-100">
+        <span className="text-xl font-bold text-blue-700 tracking-tight mr-3 select-none">Coupon Designer</span>
+        <button
+          onClick={addTextElement}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-green-500/90 hover:bg-green-600 transition text-white rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+          title="Add Text (T)"
+        >
+          <Type className="w-4 h-4" /> <span className="hidden sm:inline">Text</span>
+        </button>
+        <button
+          onClick={addNumberVariable}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-purple-500/90 hover:bg-purple-600 transition text-white rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+          title="Add Number (N)"
+        >
+          <Hash className="w-4 h-4" /> <span className="hidden sm:inline">Number</span>
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-blue-600/90 hover:bg-blue-700/90 text-white rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        >
+          <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Upload</span>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".svg,.png,.jpg,.jpeg"
+          onChange={handleBackgroundUpload}
+          className="hidden"
+        />
+        <button
+          onClick={copyElement}
+          disabled={!selectedElement}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs sm:text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <Copy className="w-4 h-4" />
+        </button>
+        <button
+          onClick={pasteElement}
+          disabled={!copiedElement}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs sm:text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <Type className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => selectedElement && deleteElement(selectedElement)}
+          disabled={!selectedElement}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-red-500/90 hover:bg-red-600 text-white rounded-lg text-xs sm:text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-400"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+        <button
+          onClick={duplicateElement}
+          disabled={!selectedElement}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-yellow-400/90 hover:bg-yellow-500 text-gray-900 rounded-lg text-xs sm:text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+        >
+          <span className="font-bold">D</span>
+        </button>
+        <div className="flex-1" />
+        <button
+          onClick={() => setShowFontManager(true)}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-indigo-500/90 hover:bg-indigo-600 text-white rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        >
+          <Settings className="w-4 h-4" /> <span className="hidden sm:inline">Fonts</span>
+        </button>
+        <button
+          onClick={resetCanvas}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <RotateCcw className="w-4 h-4" /> <span className="hidden sm:inline">Reset</span>
+        </button>
+        <button
+          onClick={() => setShowNumberGenerator(true)}
+          className="flex items-center gap-1 px-2 py-1.5 sm:px-4 sm:py-2 bg-gradient-to-r from-orange-500 via-yellow-400 to-orange-600 hover:from-orange-600 hover:to-yellow-500 text-gray-900 font-medium rounded-xl shadow focus:outline-none focus:ring-2 focus:ring-orange-400"
+        >
+          <Download className="w-4 h-4" /> <span className="hidden sm:inline">Generate</span>
+        </button>
+      </nav>
+
+      {/* --- Main Content --- */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        {/* Canvas Area */}
+        <main className="flex-1 flex justify-center items-center bg-gradient-to-br from-gray-100 via-white to-blue-100 min-h-[calc(100vh-64px)]">
+          <div className="w-full flex justify-center items-center h-full overflow-auto">
+            <div
+              className="relative bg-white rounded-2xl shadow-xl border border-gray-100 flex items-center justify-center"
+              style={{ width: 800, height: 500, minWidth: 320, minHeight: 200 }}
+            >
+              <CouponCanvas
+                textElements={textElements}
+                onUpdateElement={updateElement}
+                onSelectElement={selectElement}
+                selectedElement={selectedElement}
+                couponTemplate={couponTemplate}
+              />
+            </div>
+          </div>
+        </main>
+
+        {/* Control Panel (side on desktop, drawer on mobile) */}
+        <aside
+          className={`
+            fixed bottom-0 left-0 right-0 z-30 md:static md:w-[340px] md:max-w-sm bg-white/95
+            md:bg-white/80 md:backdrop-blur md:shadow-xl
+            border-t border-gray-200 md:border-t-0 md:border-l md:border-gray-100
+            transition-all duration-300
+            ${!controlPanelOpen ? 'translate-y-full md:translate-y-0' : 'translate-y-0'}
+            h-[60vh] md:h-auto
+            rounded-t-2xl md:rounded-t-none md:rounded-l-2xl
+            overflow-auto
+          `}
+        >
+          {/* Close handle for mobile */}
+          <div className="md:hidden flex justify-center py-2">
+            <button
+              className="w-10 h-1 bg-gray-300 rounded-full mb-1"
+              onClick={() => setControlPanelOpen(false)}
+              aria-label="Close properties"
             />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Upload className="w-4 h-4" />
-              Upload SVG/PNG/JPG Template
-            </button>
           </div>
-          {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <button
-              onClick={addTextElement}
-              className="flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-              title="Add Text (T)"
-            >
-              <Type className="w-4 h-4" />
-              Add Text
-            </button>
-            <button
-              onClick={addNumberVariable}
-              className="flex items-center justify-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-              title="Add Number (N)"
-            >
-              <Hash className="w-4 h-4" />
-              Add Number
-            </button>
-          </div>
-          {/* Quick Actions */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            <button
-              onClick={copyElement}
-              disabled={!selectedElement}
-              className="flex items-center justify-center gap-1 px-2 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Copy (Ctrl+C)"
-            >
-              <Copy className="w-3 h-3" />
-              Copy
-            </button>
-            <button
-              onClick={pasteElement}
-              disabled={!copiedElement}
-              className="flex items-center justify-center gap-1 px-2 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Paste (Ctrl+V)"
-            >
-              <Type className="w-3 h-3" />
-              Paste
-            </button>
-            <button
-              onClick={() => selectedElement && deleteElement(selectedElement)}
-              disabled={!selectedElement}
-              className="flex items-center justify-center gap-1 px-2 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Delete (Del)"
-            >
-              <Trash2 className="w-3 h-3" />
-              Del
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-2 mb-6">
-            <button
-              onClick={() => setShowFontManager(true)}
-              className="flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
-            >
-              <Settings className="w-4 h-4" />
-              Fonts
-            </button>
-            <button
-              onClick={resetCanvas}
-              className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Reset
-            </button>
-          </div>
-          <button
-            onClick={() => setShowNumberGenerator(true)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
-          >
-            <Download className="w-4 h-4" />
-            Generate Coupons
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto">
           <ControlPanel
             selectedElement={selectedElement ? (textElements.find(el => el.id === selectedElement) || null) : null}
             onUpdateElement={updateElement}
             onDeleteElement={deleteElement}
             customFonts={customFonts}
           />
-        </div>
+        </aside>
       </div>
-      <div className="flex-1 flex flex-col bg-gray-100">
-        <div className="flex-1 p-8 overflow-auto">
-          <div className="flex justify-center">
-            <CouponCanvas
-              textElements={textElements}
-              onUpdateElement={updateElement}
-              onSelectElement={selectElement}
-              selectedElement={selectedElement}
-              couponTemplate={couponTemplate}
-            />
-          </div>
-        </div>
-      </div>
+
+      {/* Floating open button for control panel (mobile only) */}
+      {!controlPanelOpen && selectedElement && (
+        <button
+          className="md:hidden fixed bottom-4 right-4 z-40 p-3 bg-blue-600 text-white rounded-full shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+          onClick={() => setControlPanelOpen(true)}
+          aria-label="Show properties"
+        >
+          <Settings className="w-6 h-6" />
+        </button>
+      )}
+
+      {/* Popups */}
       {showNumberGenerator && (
         <NumberGenerator
           onClose={() => setShowNumberGenerator(false)}

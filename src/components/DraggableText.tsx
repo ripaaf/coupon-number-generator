@@ -94,6 +94,9 @@ const DraggableText: React.FC<DraggableTextProps> = ({
     }
   }, [isDragging, isResizing, handleMouseMove, handleMouseUp]);
 
+  // choose style based on lineHeight being "auto" or not
+  const isAuto = !element.lineHeight || element.lineHeight === "auto";
+
   return (
     <div
       ref={elementRef}
@@ -113,29 +116,40 @@ const DraggableText: React.FC<DraggableTextProps> = ({
       }}
       onMouseDown={handleMouseDown}
     >
-    <div
-      className="text-content w-full h-full px-2 py-1 overflow-hidden pointer-events-none whitespace-pre-line"
-      style={{
-        fontSize: element.fontSize,
-        fontFamily: element.fontFamily,
-        color: element.fontColor || (element.isNumberVariable ? '#7C3AED' : '#1F2937'),
-        fontWeight: element.isNumberVariable ? 'bold' : 'normal',
-        letterSpacing: element.letterSpacing !== undefined ? `${element.letterSpacing}px` : undefined,
-        textAlign: element.textAlign || 'left',
-        ...(element.lineHeight && element.lineHeight !== "auto"
-          ? { lineHeight: element.lineHeight }
-          : {}),
-        backgroundColor: element.backgroundColor && element.backgroundColor !== "transparent"
-          ? element.backgroundColor
-          : undefined,
-        width: '100%',
-        height: '100%',
-        overflowWrap: 'break-word',
-        display: 'block',
-      }}
-    >
-      {element.text}
-    </div>
+      <div
+        className={`text-content w-full h-full px-2 py-1 overflow-hidden pointer-events-none whitespace-pre-line`}
+        style={{
+          fontSize: element.fontSize,
+          fontFamily: element.fontFamily,
+          color: element.fontColor || (element.isNumberVariable ? '#7C3AED' : '#1F2937'),
+          fontWeight: element.isNumberVariable ? 'bold' : 'normal',
+          letterSpacing: element.letterSpacing !== undefined ? `${element.letterSpacing}px` : undefined,
+          textAlign: element.textAlign || 'left',
+          backgroundColor: element.backgroundColor && element.backgroundColor !== "transparent"
+            ? element.backgroundColor
+            : undefined,
+          width: '100%',
+          height: '100%',
+          overflowWrap: 'break-word',
+          ...(isAuto
+            ? {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent:
+                  element.textAlign === 'center'
+                    ? 'center'
+                    : element.textAlign === 'right'
+                    ? 'flex-end'
+                    : 'flex-start',
+              }
+            : {
+                display: 'block',
+                lineHeight: element.lineHeight,
+              }),
+        }}
+      >
+        {element.text}
+      </div>
 
       {isSelected && (
         <>
