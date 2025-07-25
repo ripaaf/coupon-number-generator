@@ -158,7 +158,7 @@ const CouponCanvas: React.FC<CouponCanvasProps> = ({
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
             <div className="text-center text-gray-400">
               <p className="text-xl font-semibold mb-2">Start designing your coupon</p>
-              <p className="text-sm">Add text or upload a SVG/PNG/JPG to begin</p>
+              <p className="text-sm">Add text or upload a SVG/PNG/JPG to begin (work best with svg)</p>
             </div>
           </div>
         )}
