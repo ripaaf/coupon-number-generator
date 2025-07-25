@@ -61,13 +61,13 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
       {/* Element Type */}
       <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded-lg text-xs font-medium text-gray-700">
         <Palette className="w-4 h-4 text-gray-500" />
-        {selectedElement.isNumberVariable ? 'Number Variable' : 'Text Element'}
+        {selectedElement.isNumberVariable ? 'Prefix Variable' : 'Text Element'}
       </div>
 
       {/* Text Content */}
       <div>
         <label className="block text-xs font-semibold text-gray-700 mb-0.5">
-          {selectedElement.isNumberVariable ? 'Preview Number' : 'Text Content'}
+          {selectedElement.isNumberVariable ? 'Preview Number (only preview)' : 'Text Content'}
         </label>
         <textarea
           value={selectedElement.text}

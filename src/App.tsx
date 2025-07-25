@@ -29,6 +29,43 @@ export interface CustomFont {
   family: string;
 }
 
+// --- Add for Advanced Number Generation ---
+interface AdvancedOptions {
+  formatting: 'uppercase' | 'lowercase' | 'randomcase';
+  customChars: string;
+  randomizeOrder: boolean;
+  uniqueOnly: boolean;
+  usePrefix: boolean;
+  separator: string;
+}
+const defaultAdvanced: AdvancedOptions = {
+  formatting: 'uppercase',
+  customChars: '',
+  randomizeOrder: false,
+  uniqueOnly: true,
+  usePrefix: true,
+  separator: '', 
+};
+function applyFormatting(str: string, formatting: AdvancedOptions['formatting']) {
+  switch (formatting) {
+    case 'uppercase': return str.toUpperCase();
+    case 'lowercase': return str.toLowerCase();
+    case 'randomcase':
+      return Array.from(str).map(char =>
+        Math.random() > 0.5 ? char.toUpperCase() : char.toLowerCase()
+      ).join('');
+    default: return str;
+  }
+}
+function generateRandomString(length: number, chars: string) {
+  let result = '';
+  for (let i = 0; i < length; ++i) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+// ---
+
 function App() {
   const [textElements, setTextElements] = useState<TextElement[]>([]);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
@@ -38,6 +75,9 @@ function App() {
   const [couponTemplate, setCouponTemplate] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copiedElement, setCopiedElement] = useState<TextElement | null>(null);
+
+  // --- Advanced Generator State ---
+  const [advanced, setAdvanced] = useState<AdvancedOptions>({ ...defaultAdvanced });
 
   const addTextElement = useCallback(() => {
     const newElement: TextElement = {
@@ -259,193 +299,230 @@ function App() {
   `;
 
   // Async SVG generator with embedded fonts
-const generateSVGContent = useCallback(
-  async (elements: TextElement[]) => {
-    let svgBase = couponTemplate || defaultTemplate;
+  const generateSVGContent = useCallback(
+    async (elements: TextElement[]) => {
+      let svgBase = couponTemplate || defaultTemplate;
 
-    const usedFonts = customFonts.filter(font =>
-      elements.some(el => el.fontFamily === font.family)
-    );
+      const usedFonts = customFonts.filter(font =>
+        elements.some(el => el.fontFamily === font.family)
+      );
 
-    const fontFaceCSS = await Promise.all(
-      usedFonts.map(async (font) => {
-        const base64 = await fetchFontBase64(font.url);
-        if (!base64) return '';
-        const ext = font.url.split('.').pop()?.toLowerCase();
-        let format = 'truetype';
-        if (ext === 'woff') format = 'woff';
-        if (ext === 'woff2') format = 'woff2';
-        if (ext === 'otf') format = 'opentype';
-        return `
-          @font-face {
-            font-family: '${font.family}';
-            src: url(data:font/${format};base64,${base64}) format('${format}');
-            font-weight: normal;
-            font-style: normal;
-          }
-        `;
-      })
-    );
-
-    const getTextAnchor = (align?: string) => {
-      if (align === 'center') return 'middle';
-      if (align === 'right') return 'end';
-      return 'start';
-    };
-    const getTextX = (el: TextElement) => {
-      if (el.textAlign === 'center') return el.x + el.width / 2;
-      if (el.textAlign === 'right') return el.x + el.width;
-      return el.x;
-    };
-
-    const styleTag = fontFaceCSS.join('\n').trim()
-      ? `<style><![CDATA[\n${fontFaceCSS.join('\n')}\n]]></style>`
-      : '';
-
-    const textNodes = elements.map(el => {
-      const borderRadius = 6;
-      const borderWidth = 1;
-      const hasBackground = el.backgroundColor && el.backgroundColor !== "transparent";
-      const lines = String(el.text).split('\n');
-      const isAuto = !el.lineHeight || el.lineHeight === "auto";
-      const fontSize = el.fontSize;
-      const lineHeight = isAuto ? 1.2 : Number(el.lineHeight); // HTML default is 1.2
-
-      let textY: number;
-      let tspans: string;
-
-      if (isAuto) {
-        // Vertically center the whole block
-        textY = el.y + el.height / 2;
-        tspans = lines.map((line, i) =>
-          `<tspan x="${getTextX(el)}" dy="${i === 0 ? 0 : fontSize * lineHeight}">${line || ' '}</tspan>`
-        ).join('');
-      } else {
-        // Top align the block, use custom line height
-        textY = el.y + fontSize;
-        tspans = lines.map((line, i) =>
-          `<tspan x="${getTextX(el)}" dy="${i === 0 ? 0 : fontSize * lineHeight}">${line || ' '}</tspan>`
-        ).join('');
-      }
-
-      return `
-        <g>
-          <rect
-            x="${el.x}"
-            y="${el.y}"
-            width="${el.width}"
-            height="${el.height}"
-            fill="${hasBackground ? el.backgroundColor : 'none'}"
-            stroke="transparent"
-            stroke-width="${borderWidth}"
-            rx="${borderRadius}"
-          />
-          <text
-            x="${getTextX(el)}"
-            y="${textY}"
-            text-anchor="${getTextAnchor(el.textAlign)}"
-            font-family="${el.fontFamily}"
-            font-size="${el.fontSize}"
-            fill="${el.fontColor || (el.isNumberVariable ? '#7C3AED' : '#1F2937')}"
-            font-weight="${el.isNumberVariable ? 'bold' : 'normal'}"
-            letter-spacing="${el.letterSpacing ? el.letterSpacing : 0}"
-            ${isAuto ? 'dominant-baseline="middle"' : 'dominant-baseline="hanging"'}
-          >${tspans}</text>
-        </g>
-      `;
-    }).join('');
-
-    svgBase = svgBase.replace('</svg>', `${styleTag}${textNodes}</svg>`);
-    return svgBase;
-  },
-  [couponTemplate, customFonts]
-);
-
-
-  // Updated: support export as SVG, PNG, or JPG
-const generateCoupons = useCallback(
-  async (
-    startNumber: number,
-    count: number,
-    prefix: string = '',
-    numberLength: number = 4,
-    format: 'svg' | 'png' | 'jpg' = 'svg',
-    resolution?: { width: number, height: number } // <-- Accept resolution!
-  ) => {
-    const numberElements = textElements.filter(el => el.isNumberVariable);
-    if (numberElements.length === 0) return [];
-
-    const JSZip = (await import('jszip')).default;
-    const { saveAs } = await import('file-saver');
-
-    const zip = new JSZip();
-    const coupons = [];
-
-    for (let i = 0; i < count; i++) {
-      const currentNumber = startNumber + i;
-      const formattedNumber = prefix + currentNumber.toString().padStart(numberLength, '0');
-      const couponElements = textElements.map(el => ({
-        ...el,
-        text: el.isNumberVariable ? formattedNumber : el.text,
-      }));
-      const svgContent = await generateSVGContent(couponElements);
-
-      let imgData = null;
-      let fileName = `coupon_${formattedNumber}.${format}`;
-      if (format === 'svg') {
-        zip.file(fileName, svgContent);
-      } else {
-        // Use custom resolution, fallback to 400x200 if not set
-        const width = resolution?.width || 400;
-        const height = resolution?.height || 200;
-        const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
-        const url = URL.createObjectURL(svgBlob);
-        const image = new window.Image();
-        imgData = await new Promise<string>((resolve, reject) => {
-          image.onload = () => {
-            try {
-              const canvas = document.createElement('canvas');
-              canvas.width = width;
-              canvas.height = height;
-              const ctx = canvas.getContext('2d');
-              // Fill white bg for JPG
-              if (format === 'jpg') {
-                ctx!.fillStyle = "#fff";
-                ctx!.fillRect(0, 0, width, height);
-              }
-              ctx?.drawImage(image, 0, 0, width, height);
-              const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-              const dataUrl = canvas.toDataURL(mimeType, 1.0);
-              zip.file(fileName, dataUrl.split(',')[1], { base64: true });
-              resolve(dataUrl);
-            } catch (err) {
-              reject(err);
-            } finally {
-              URL.revokeObjectURL(url);
+      const fontFaceCSS = await Promise.all(
+        usedFonts.map(async (font) => {
+          const base64 = await fetchFontBase64(font.url);
+          if (!base64) return '';
+          const ext = font.url.split('.').pop()?.toLowerCase();
+          let format = 'truetype';
+          if (ext === 'woff') format = 'woff';
+          if (ext === 'woff2') format = 'woff2';
+          if (ext === 'otf') format = 'opentype';
+          return `
+            @font-face {
+              font-family: '${font.family}';
+              src: url(data:font/${format};base64,${base64}) format('${format}');
+              font-weight: normal;
+              font-style: normal;
             }
-          };
-          image.onerror = reject;
-          image.src = url;
+          `;
+        })
+      );
+
+      const getTextAnchor = (align?: string) => {
+        if (align === 'center') return 'middle';
+        if (align === 'right') return 'end';
+        return 'start';
+      };
+      const getTextX = (el: TextElement) => {
+        if (el.textAlign === 'center') return el.x + el.width / 2;
+        if (el.textAlign === 'right') return el.x + el.width;
+        return el.x;
+      };
+
+      const styleTag = fontFaceCSS.join('\n').trim()
+        ? `<style><![CDATA[\n${fontFaceCSS.join('\n')}\n]]></style>`
+        : '';
+
+      const textNodes = elements.map(el => {
+        const borderRadius = 6;
+        const borderWidth = 1;
+        const hasBackground = el.backgroundColor && el.backgroundColor !== "transparent";
+        const lines = String(el.text).split('\n');
+        const isAuto = !el.lineHeight || el.lineHeight === "auto";
+        const fontSize = el.fontSize;
+        const lineHeight = isAuto ? 1.2 : Number(el.lineHeight);
+
+        let textY: number;
+        let tspans: string;
+
+        if (isAuto) {
+          textY = el.y + el.height / 2;
+          tspans = lines.map((line, i) =>
+            `<tspan x="${getTextX(el)}" dy="${i === 0 ? 0 : fontSize * lineHeight}">${line || ' '}</tspan>`
+          ).join('');
+        } else {
+          textY = el.y + fontSize;
+          tspans = lines.map((line, i) =>
+            `<tspan x="${getTextX(el)}" dy="${i === 0 ? 0 : fontSize * lineHeight}">${line || ' '}</tspan>`
+          ).join('');
+        }
+
+        return `
+          <g>
+            <rect
+              x="${el.x}"
+              y="${el.y}"
+              width="${el.width}"
+              height="${el.height}"
+              fill="${hasBackground ? el.backgroundColor : 'none'}"
+              stroke="transparent"
+              stroke-width="${borderWidth}"
+              rx="${borderRadius}"
+            />
+            <text
+              x="${getTextX(el)}"
+              y="${textY}"
+              text-anchor="${getTextAnchor(el.textAlign)}"
+              font-family="${el.fontFamily}"
+              font-size="${el.fontSize}"
+              fill="${el.fontColor || (el.isNumberVariable ? '#7C3AED' : '#1F2937')}"
+              font-weight="${el.isNumberVariable ? 'bold' : 'normal'}"
+              letter-spacing="${el.letterSpacing ? el.letterSpacing : 0}"
+              ${isAuto ? 'dominant-baseline="middle"' : 'dominant-baseline="hanging"'}
+            >${tspans}</text>
+          </g>
+        `;
+      }).join('');
+
+      svgBase = svgBase.replace('</svg>', `${styleTag}${textNodes}</svg>`);
+      return svgBase;
+    },
+    [couponTemplate, customFonts]
+  );
+
+  // Updated: support advanced options for number generation
+  const generateCoupons = useCallback(
+    async (
+      startNumber: number,
+      count: number,
+      prefix: string = '',
+      numberLength: number = 4,
+      format: 'svg' | 'png' | 'jpg' = 'svg',
+      resolution?: { width: number, height: number },
+      advancedOptions?: AdvancedOptions
+    ) => {
+      const numberElements = textElements.filter(el => el.isNumberVariable);
+      if (numberElements.length === 0) return [];
+
+      const JSZip = (await import('jszip')).default;
+      const { saveAs } = await import('file-saver');
+
+      const zip = new JSZip();
+      let coupons: any[] = [];
+
+      // --- Advanced Generation Logic ---
+      let numbers: string[] = [];
+      const adv = advancedOptions || advanced;
+      let sep = adv.separator || '';
+
+    if (adv.customChars && adv.customChars.length > 0) {
+      // Generate random codes with customChars (unique if needed)
+      const generated = new Set<string>();
+      while (numbers.length < count) {
+        let code = generateRandomString(numberLength, adv.customChars);
+        if (adv.uniqueOnly && generated.has(code)) continue;
+        generated.add(code);
+        let result = adv.usePrefix && prefix
+          ? `${prefix}${sep}${code}`
+          : code;
+        result = applyFormatting(result, adv.formatting);
+        numbers.push(result);
+      }
+    } else {
+      // Sequential generation, format and prefix
+      for (let i = 0; i < count; i++) {
+        let code = (startNumber + i).toString().padStart(numberLength, '0');
+        let result = adv.usePrefix && prefix
+          ? `${prefix}${sep}${code}`
+          : code;
+        result = applyFormatting(result, adv.formatting);
+        numbers.push(result);
+      }
+      if (adv.uniqueOnly) {
+        numbers = Array.from(new Set(numbers));
+      }
+    }
+    if (adv.randomizeOrder) {
+      numbers = numbers
+        .map((n, i) => ({ i, n, sort: Math.random() }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(obj => obj.n);
+    }
+      // ---
+
+      for (let i = 0; i < numbers.length; i++) {
+        const code = numbers[i];
+        const couponElements = textElements.map(el => ({
+          ...el,
+          text: el.isNumberVariable ? code : el.text,
+        }));
+        const svgContent = await generateSVGContent(couponElements);
+
+        let imgData = null;
+        let fileName = `coupon_${code}.${format}`;
+        if (format === 'svg') {
+          zip.file(fileName, svgContent);
+        } else {
+          // Use custom resolution, fallback to 400x200 if not set
+          const width = resolution?.width || 400;
+          const height = resolution?.height || 200;
+          const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+          const url = URL.createObjectURL(svgBlob);
+          const image = new window.Image();
+          imgData = await new Promise<string>((resolve, reject) => {
+            image.onload = () => {
+              try {
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (format === 'jpg') {
+                  ctx!.fillStyle = "#fff";
+                  ctx!.fillRect(0, 0, width, height);
+                }
+                ctx?.drawImage(image, 0, 0, width, height);
+                const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+                const dataUrl = canvas.toDataURL(mimeType, 1.0);
+                zip.file(fileName, dataUrl.split(',')[1], { base64: true });
+                resolve(dataUrl);
+              } catch (err) {
+                reject(err);
+              } finally {
+                URL.revokeObjectURL(url);
+              }
+            };
+            image.onerror = reject;
+            image.src = url;
+          });
+        }
+
+        coupons.push({
+          id: `coupon-${i}`,
+          number: code,
+          elements: couponElements,
+          svgContent: svgContent,
+          imgData: imgData,
         });
       }
 
-      coupons.push({
-        id: `coupon-${i}`,
-        number: formattedNumber,
-        elements: couponElements,
-        svgContent: svgContent,
-        imgData: imgData,
-      });
-    }
-
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    saveAs(zipBlob, `coupons_${startNumber}-${startNumber + count - 1}.zip`);
-    return coupons;
-  },
-  [textElements, couponTemplate, customFonts]
-);
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      saveAs(zipBlob, `coupons_${numbers[0] || '0000'}-${numbers[numbers.length - 1] || 'end'}.zip`);
+      return coupons;
+    },
+    [textElements, couponTemplate, customFonts, advanced]
+  );
 
   const exportCoupons = useCallback((coupons: any[]) => {
+    // place for custom after-export logic
     console.log('Coupons exported successfully:', coupons.length);
   }, []);
 
@@ -456,13 +533,11 @@ const generateCoupons = useCallback(
   }, []);
 
   // Responsive drawer for Control Panel
-  const [controlPanelOpen, setControlPanelOpen] = useState(true); // Always open on desktop
+  const [controlPanelOpen, setControlPanelOpen] = useState(true);
 
-  // This effect will auto-open the panel when an element is selected (on mobile)
   useEffect(() => {
     if (selectedElement) setControlPanelOpen(true);
   }, [selectedElement]);
-
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-blue-50 font-inter">
@@ -479,13 +554,14 @@ const generateCoupons = useCallback(
         <button
           onClick={addNumberVariable}
           className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-purple-500/90 hover:bg-purple-600 transition text-white rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-          title="Add Number (N)"
+          title="Add Generated Number Variable (N)"
         >
-          <Hash className="w-4 h-4" /> <span className="hidden sm:inline">Number</span>
+          <Hash className="w-4 h-4" /> <span className="hidden sm:inline">Prefix</span>
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
           className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-blue-600/90 hover:bg-blue-700/90 text-white rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          title="Upload SVG, PNG, or JPG"
         >
           <Upload className="w-4 h-4" /> <span className="hidden sm:inline">Upload</span>
         </button>
@@ -500,6 +576,7 @@ const generateCoupons = useCallback(
           onClick={copyElement}
           disabled={!selectedElement}
           className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs sm:text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          title="Copy Element"
         >
           <Copy className="w-4 h-4" />
         </button>
@@ -507,6 +584,7 @@ const generateCoupons = useCallback(
           onClick={pasteElement}
           disabled={!copiedElement}
           className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs sm:text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          title="Paste Element"
         >
           <Type className="w-4 h-4" />
         </button>
@@ -514,6 +592,7 @@ const generateCoupons = useCallback(
           onClick={() => selectedElement && deleteElement(selectedElement)}
           disabled={!selectedElement}
           className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-red-500/90 hover:bg-red-600 text-white rounded-lg text-xs sm:text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-400"
+          title="Delete Element"
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -521,6 +600,7 @@ const generateCoupons = useCallback(
           onClick={duplicateElement}
           disabled={!selectedElement}
           className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-yellow-400/90 hover:bg-yellow-500 text-gray-900 rounded-lg text-xs sm:text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+          title="Duplicate Element"
         >
           <span className="font-bold">D</span>
         </button>
@@ -534,6 +614,7 @@ const generateCoupons = useCallback(
         <button
           onClick={resetCanvas}
           className="flex items-center gap-1 px-2 py-1.5 sm:px-3 sm:py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          title="Reset Canvas"
         >
           <RotateCcw className="w-4 h-4" /> <span className="hidden sm:inline">Reset</span>
         </button>

@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, Hash, FileText, Link as LinkIcon, Unlink } from 'lucide-react';
 
+interface AdvancedOptions {
+  formatting: 'uppercase' | 'lowercase' | 'randomcase';
+  customChars: string;
+  randomizeOrder: boolean;
+  uniqueOnly: boolean;
+  usePrefix: boolean;
+  separator: string;
+}
+
 interface NumberGeneratorProps {
   onClose: () => void;
   onGenerate: (
@@ -9,7 +18,8 @@ interface NumberGeneratorProps {
     prefix: string,
     numberLength: number,
     format: 'svg' | 'png' | 'jpg',
-    resolution?: { width: number, height: number }
+    resolution?: { width: number, height: number },
+    advanced?: AdvancedOptions
   ) => Promise<any[]>;
   onExport: (coupons: any[]) => void;
 }
@@ -25,6 +35,36 @@ function getNumberLength(input: string | number) {
 }
 
 const DEFAULT_ASPECT_RATIO = 1; // fallback for initial state
+
+const defaultAdvanced: AdvancedOptions = {
+  formatting: 'uppercase',
+  customChars: '',
+  randomizeOrder: false,
+  uniqueOnly: true,
+  usePrefix: true,
+  separator: '',
+};
+
+function applyFormatting(str: string, formatting: AdvancedOptions['formatting']) {
+  switch (formatting) {
+    case 'uppercase': return str.toUpperCase();
+    case 'lowercase': return str.toLowerCase();
+    case 'randomcase':
+      // Nana: Make it whimsical
+      return Array.from(str).map(char =>
+        Math.random() > 0.5 ? char.toUpperCase() : char.toLowerCase()
+      ).join('');
+    default: return str;
+  }
+}
+
+function generateRandomString(length: number, chars: string) {
+  let result = '';
+  for (let i = 0; i < length; ++i) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
 
 const NumberGenerator: React.FC<NumberGeneratorProps> = ({
   onClose,
@@ -46,7 +86,10 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
 
   const [loading, setLoading] = useState(false); // Nana: Loading state
 
-  // Detect aspect ratio from SVG after generation
+  // Advanced generation state
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [advanced, setAdvanced] = useState<AdvancedOptions>({ ...defaultAdvanced });
+
   useEffect(() => {
     if (
       generatedCoupons.length > 0 &&
@@ -65,7 +108,6 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
     }
   }, [generatedCoupons, linked, width]);
 
-  // Whenever format changes, sync resolution based on aspect ratio
   useEffect(() => {
     if (format !== 'svg') {
       if (!svgAspectRatio || svgAspectRatio === 0) {
@@ -84,20 +126,26 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
   };
 
   const handleGenerate = async () => {
-    setLoading(true); // Nana: Start loading
+    setLoading(true);
     try {
       const startNumber = parseInt(startNumberStr, 10) || 0;
       const resolution = format !== 'svg' ? { width, height } : undefined;
-      const coupons = await onGenerate(startNumber, count, prefix, numberLength, format, resolution);
+      const coupons = await onGenerate(
+        startNumber,
+        count,
+        prefix,
+        numberLength,
+        format,
+        resolution,
+        advanced
+      );
       setGeneratedCoupons(coupons);
       setPreviewIndex(0);
-      // Nana: Don't reset width/height here!
-      await onExport(coupons); // Nana: Export after generating
+      await onExport(coupons);
     } catch (error) {
       // Nana: For the master, show a toast or error here if you want
-      // (You can add error handling if you want)
     } finally {
-      setLoading(false); // Nana: Stop loading
+      setLoading(false);
     }
   };
 
@@ -117,11 +165,104 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
     }
   };
 
-  const formatNumber = (num: number) => {
-    const startNum = parseInt(startNumberStr, 10) || 0;
-    const currentNumber = startNum + num - 1;
-    return prefix + currentNumber.toString().padStart(numberLength, '0');
-  };
+  // Preview sample generator, local-only logic
+  function formatNumber(num: number) {
+    let startNum = parseInt(startNumberStr, 10) || 0;
+    let code: string;
+    let actualPrefix = advanced.usePrefix ? prefix : '';
+    let sep = advanced.separator || '';
+    if (advanced.customChars && advanced.customChars.length > 0) {
+      code = generateRandomString(numberLength, advanced.customChars);
+    } else {
+      let currentNumber = startNum + num - 1;
+      code = currentNumber.toString().padStart(numberLength, '0');
+    }
+    let result = actualPrefix
+      ? `${actualPrefix}${sep}${code}`
+      : code;
+    result = applyFormatting(result, advanced.formatting);
+    return result;
+  }
+
+  // Advanced panel UI
+  const advancedPanel = (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 rounded-lg border">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Formatting</label>
+        <select
+          value={advanced.formatting}
+          onChange={e => setAdvanced(a => ({ ...a, formatting: e.target.value as any }))}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+        >
+          <option value="uppercase">UPPERCASE</option>
+          <option value="lowercase">lowercase</option>
+          <option value="randomcase">rAnDoM CaSe</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Custom Characters <span className="text-xs text-gray-400">(Optional)</span></label>
+        <input
+          type="text"
+          value={advanced.customChars}
+          onChange={e => setAdvanced(a => ({ ...a, customChars: e.target.value }))}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono"
+          placeholder="e.g. ABC123"
+        />
+        <div className="text-xs text-gray-500 mt-1">
+          If set, generated codes use only these characters (randomized).
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Randomize Order</label>
+        <input
+          type="checkbox"
+          checked={advanced.randomizeOrder}
+          onChange={e => setAdvanced(a => ({ ...a, randomizeOrder: e.target.checked }))}
+          className="mr-2"
+          id="randomizeOrder"
+        />
+        <label htmlFor="randomizeOrder" className="text-sm text-gray-700">Randomize output order</label>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Unique Only</label>
+        <input
+          type="checkbox"
+          checked={advanced.uniqueOnly}
+          onChange={e => setAdvanced(a => ({ ...a, uniqueOnly: e.target.checked }))}
+          className="mr-2"
+          id="uniqueOnly"
+        />
+        <label htmlFor="uniqueOnly" className="text-sm text-gray-700">Ensure all codes are unique</label>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Use Prefix</label>
+        <input
+          type="checkbox"
+          checked={advanced.usePrefix}
+          onChange={e => setAdvanced(a => ({ ...a, usePrefix: e.target.checked }))}
+          className="mr-2"
+          id="usePrefix"
+        />
+        <label htmlFor="usePrefix" className="text-sm text-gray-700">Include prefix in code</label>
+      </div>
+      <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Separator <span className="text-xs text-gray-400">(Optional)</span>
+      </label>
+      <input
+        type="text"
+        value={advanced.separator}
+        onChange={e => setAdvanced(a => ({ ...a, separator: e.target.value }))}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono"
+        placeholder="e.g. -"
+        maxLength={3}
+      />
+      <div className="text-xs text-gray-500 mt-1">
+        Placed between prefix & code, e.g. <span className="font-mono">COUP-001</span>
+      </div>
+    </div>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -142,7 +283,15 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
         <div className="flex-1 p-6 space-y-6 overflow-y-auto">
           {/* Configuration */}
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-gray-800">Configuration</h3>
+            <h3 className="text-lg font-medium text-gray-800 flex items-center gap-2">
+              Configuration
+              <button
+                className="ml-2 text-xs text-purple-700 border border-purple-300 px-2 py-1 rounded hover:bg-purple-50 transition"
+                onClick={() => setShowAdvanced(v => !v)}
+              >
+                {showAdvanced ? 'Hide' : 'Show'} Advanced
+              </button>
+            </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div>
@@ -256,6 +405,8 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
               )}
             </div>
 
+            {showAdvanced && advancedPanel}
+
             {/* Number Format Preview */}
             <div className="bg-blue-50 p-4 rounded-lg">
               <p className="text-sm font-medium text-blue-800 mb-2">Number Format Preview:</p>
@@ -281,7 +432,7 @@ const NumberGenerator: React.FC<NumberGeneratorProps> = ({
                   <div className="w-full h-3 bg-gray-200 rounded-lg relative overflow-hidden">
                     <div
                       className="absolute left-0 top-0 h-full bg-purple-600 transition-all animate-pulse-loading"
-                      style={{ width: '60%' }} // Nana: You can animate or increase width for progress effect
+                      style={{ width: '60%' }}
                     />
                   </div>
                   <span className="ml-2 text-purple-600 font-medium">exporting...</span>

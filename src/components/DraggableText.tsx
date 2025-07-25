@@ -102,7 +102,7 @@ const DraggableText: React.FC<DraggableTextProps> = ({
       ref={elementRef}
       className={`absolute select-none group ${
         isSelected ? 'ring-2 ring-blue-500 ring-opacity-75' : ''
-      } ${element.isNumberVariable ? 'bg-white/30' : 'bg-white'} 
+      } ${element.isNumberVariable ? 'bg-white/30' : 'bg-white/30'} 
       hover:ring-1 hover:ring-blue-300 transition-all duration-150 rounded border ${
         isSelected ? 'border-blue-500' : 'border-gray-300'
       } ${isDragging ? 'shadow-lg' : 'shadow-sm'}`}
@@ -164,7 +164,7 @@ const DraggableText: React.FC<DraggableTextProps> = ({
           ></div>
           {/* Element type indicator */}
           <div className="absolute -top-7 left-0 text-xs bg-blue-600 text-white px-2 py-1 rounded whitespace-nowrap shadow-sm">
-            {element.isNumberVariable ? 'Number Variable' : 'Text Element'}
+            {element.isNumberVariable ? 'Prefix Variable' : 'Text Element'}
           </div>
         </>
       )}

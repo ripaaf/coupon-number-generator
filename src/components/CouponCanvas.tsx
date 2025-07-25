@@ -13,7 +13,7 @@ interface CouponCanvasProps {
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 500;
 const GRID_SPACING = 30; // px
-const GRID_COLOR = "#e5e7eb"; // subtle gray-200
+const GRID_COLOR = "#E3E3E3"; // subtle gray-200
 const GRID_BG = "#f3f4f6"; // subtle gray-100
 
 const CouponCanvas: React.FC<CouponCanvasProps> = ({
